@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "excel-onedrive-scheduler"
+version = "1.0.0"
+description = "Servicio de actualización automática de archivos Excel en OneDrive/SharePoint"
+authors = ["Tu Nombre <tu@email.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.14"
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.29.0"}
+apscheduler = "^3.10.4"
+openpyxl = "^3.1.2"
+pydantic = "^2.7.0"
+pydantic-settings = "^2.2.1"
+python-multipart = "^0.0.9"
+aiosqlite = "^0.20.0"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.30"}
+httpx = "^0.27.0"
+aiosmtplib = "^3.0"
+
+[tool.poetry.dependencies.pywin32]
+version = "^306"
+markers = "sys_platform == 'win32'"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+httpx = "^0.27.0"
+pytest-asyncio = "^0.23.6"
+anyio = {extras = ["trio"], version = "^4.0.0"}
+
+[tool.poetry.scripts]
+scheduler = "app.main:start"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

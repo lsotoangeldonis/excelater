@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel Scheduler — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/js/all.min.js" crossorigin="anonymous"></script>
+<style>
+:root {
+  --bg:        #2D2A2E;
+  --bg2:       #221F22;
+  --bg3:       #403E41;
+  --border:    #403E41;
+  --border2:   #5B595C;
+  --text:      #FCFCFA;
+  --text2:     #939293;
+  --text3:     #5B595C;
+  --accent:    #AB9DF2;
+  --accent2:   #8B79D4;
+  --green:     #A9DC76;
+  --red:       #FF6188;
+  --yellow:    #FFD866;
+  --purple:    #AB9DF2;
+  --cyan:      #78DCE8;
+  --mono:      'IBM Plex Mono', monospace;
+  --sans:      'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── Layout ── */
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ── */
+aside {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.logo {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon {
+  width: 32px; height: 32px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.logo-text { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.2; }
+.logo-sub { font-size: 10px; color: var(--text2); font-family: var(--mono); }
+
+nav { flex: 1; padding: 12px 0; }
+.nav-section { padding: 6px 18px 4px; font-size: 10px; font-family: var(--mono); color: var(--text3); letter-spacing: .08em; text-transform: uppercase; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+  border-left: 2px solid transparent;
+  transition: all .15s;
+}
+.nav-item:hover { color: var(--text); background: rgba(171,157,242,.06); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(171,157,242,.08); }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px; font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 18px; text-align: center;
+}
+
+.sidebar-footer {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+.status-dot { width:8px; height:8px; border-radius:50%; background: var(--green); display:inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+.status-label { font-family: var(--mono); font-size: 11px; color: var(--text2); margin-left: 8px; }
+
+/* ── Main ── */
+main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.topbar {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.page-title { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+.page-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-radius: 5px;
+  font-size: 13px; font-family: var(--sans);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all .15s;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+.btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon { padding: 5px 8px; }
+
+/* ── Pages ── */
+.page { display: none; padding: 28px; }
+.page.active { display: block; }
+
+/* ── Stats Grid ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.stat-label { font-size: 11px; font-family: var(--mono); color: var(--text2); text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { font-size: 32px; font-family: var(--mono); font-weight: 600; margin-top: 6px; line-height: 1; }
+.stat-meta { font-size: 11px; color: var(--text2); margin-top: 6px; }
+.stat-green .stat-value { color: var(--green); }
+.stat-red .stat-value { color: var(--red); }
+.stat-blue .stat-value { color: var(--accent); }
+.stat-yellow .stat-value { color: var(--yellow); }
+
+/* ── Table ── */
+.table-wrap {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.table-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.table-title { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.table-actions { display: flex; gap: 8px; align-items: center; }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  color: var(--text2); text-transform: uppercase; letter-spacing: .06em;
+  padding: 10px 16px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(171,157,242,.04); }
+
+/* ── Badges ── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-family: var(--mono); font-weight: 500;
+}
+.badge::before { content: ''; width:6px; height:6px; border-radius:50%; }
+.badge-green  { background: rgba(169,220,118,.12); color: var(--green); }
+.badge-green::before  { background: var(--green); }
+.badge-red    { background: rgba(255,97,136,.12);  color: var(--red); }
+.badge-red::before    { background: var(--red); }
+.badge-yellow { background: rgba(255,216,102,.12); color: var(--yellow); }
+.badge-yellow::before { background: var(--yellow); }
+.badge-blue   { background: rgba(171,157,242,.12); color: var(--accent); }
+.badge-blue::before   { background: var(--accent); }
+.badge-gray   { background: rgba(147,146,147,.12); color: var(--text2); }
+.badge-gray::before   { background: var(--text2); }
+.badge-purple { background: rgba(171,157,242,.12); color: var(--purple); }
+.badge-purple::before { background: var(--purple); }
+
+/* ── Schedule pill ── */
+.schedule-pill {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--cyan); padding: 3px 8px; border-radius: 4px;
+}
+
+/* ── Modal ── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  width: 600px; max-width: 95vw;
+  max-height: 90vh; overflow-y: auto;
+  animation: slideUp .2s ease;
+}
+@keyframes slideUp { from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1} }
+.modal-head {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+.modal-body { padding: 24px; }
+.modal-foot {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+
+/* ── Form ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-full { grid-column: 1 / -1; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 12px; font-family: var(--mono); color: var(--text2); }
+input, select, textarea {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: border .15s;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(171,157,242,.12);
+}
+select option { background: var(--bg2); }
+textarea { resize: vertical; min-height: 70px; }
+
+.schedule-builder { margin-top: 8px; }
+.sch-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.sch-tab {
+  padding: 6px 14px; border-radius: 5px;
+  font-size: 12px; font-family: var(--mono);
+  cursor: pointer; border: 1px solid var(--border2);
+  color: var(--text2); background: transparent;
+  transition: all .15s;
+}
+.sch-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sch-panel { display: none; }
+.sch-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-info { font-size: 13px; }
+.toggle-desc { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.toggle {
+  position: relative; width: 38px; height: 21px; cursor: pointer;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--border2); border-radius: 21px;
+  transition: .2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 15px; height: 15px;
+  left: 3px; bottom: 3px;
+  background: #fff; border-radius: 50%;
+  transition: .2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(17px); }
+
+/* ── Log panel ── */
+.log-modal { width: 780px; }
+.log-content {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text2);
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.log-line-error { color: var(--red); }
+.log-line-warn  { color: var(--yellow); }
+.log-line-info  { color: var(--text); }
+.log-line-debug { color: var(--text3); }
+
+/* ── Empty state ── */
+.empty {
+  text-align: center; padding: 60px 20px;
+  color: var(--text2);
+}
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-title { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
+.empty-sub { font-size: 12px; margin-top: 6px; }
+
+/* ── Pagination ── */
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--border); }
+.page-info { font-size: 12px; color: var(--text2); font-family: var(--mono); }
+.page-btns { display: flex; gap: 6px; }
+
+/* ── Filter bar ── */
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+.search-input { max-width: 260px; }
+select.filter-select { max-width: 160px; }
+
+/* ── Toast ── */
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-radius: 6px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  font-size: 13px;
+  animation: toastIn .2s ease;
+  min-width: 240px;
+}
+@keyframes toastIn { from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1} }
+.toast-ok   { border-left: 3px solid var(--green); }
+.toast-err  { border-left: 3px solid var(--red); }
+.toast-info { border-left: 3px solid var(--accent); }
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  aside { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="logo">
+      <div class="logo-mark">
+        <div class="logo-icon"><i class="fa-solid fa-bolt"></i></div>
+        <div>
+          <div class="logo-text">Excel Scheduler</div>
+          <div class="logo-sub">OneDrive / SharePoint</div>
+        </div>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-section">Principal</div>
+      <div class="nav-item active" onclick="goPage('dashboard')">
+        <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span> Dashboard
+      </div>
+      <div class="nav-item" onclick="goPage('tasks')">
+        <span class="nav-icon"><i class="fa-solid fa-gear"></i></span> Tareas
+        <span class="nav-badge" id="badge-tasks">0</span>
+      </div>
+      <div class="nav-section">Historial</div>
+      <div class="nav-item" onclick="goPage('logs')">
+        <span class="nav-icon"><i class="fa-solid fa-clock-rotate-left"></i></span> Ejecuciones
+      </div>
+      <div class="nav-item" onclick="goPage('reports')">
+        <span class="nav-icon"><i class="fa-solid fa-download"></i></span> Logs / Archivos
+      </div>
+      <div class="nav-section">Notificaciones</div>
+      <div class="nav-item" onclick="goPage('schedreports')">
+        <span class="nav-icon"><i class="fa-solid fa-chart-bar"></i></span> Reportes programados
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="srv-dot"></span>
+      <span class="status-label" id="srv-label">Conectando…</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="page-title">Dashboard</div>
+        <div class="page-sub" id="page-sub">Resumen general del sistema</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
+        <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva tarea</button>
+      </div>
+    </div>
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card stat-blue">
+          <div class="stat-label">Tareas activas</div>
+          <div class="stat-value" id="st-active">—</div>
+          <div class="stat-meta" id="st-total">de — total</div>
+        </div>
+        <div class="stat-card stat-green">
+          <div class="stat-label">Ejecuciones OK</div>
+          <div class="stat-value" id="st-ok">—</div>
+          <div class="stat-meta" id="st-rate">— tasa de éxito</div>
+        </div>
+        <div class="stat-card stat-red">
+          <div class="stat-label">Fallidas</div>
+          <div class="stat-value" id="st-fail">—</div>
+          <div class="stat-meta">últimas 24h incluidas</div>
+        </div>
+        <div class="stat-card stat-yellow">
+          <div class="stat-label">En ejecución</div>
+          <div class="stat-value" id="st-running">—</div>
+          <div class="stat-meta">ahora mismo</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Próximas ejecuciones</div>
+          <div class="table-actions">
+            <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">Auto-actualiza cada 30s</span>
+          </div>
+        </div>
+        <table id="upcoming-table">
+          <thead>
+            <tr>
+              <th>Tarea</th><th>Programación</th><th>Última ejecución</th><th>Próxima</th><th>Estado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="upcoming-body">
+            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PAGE: TASKS -->
+    <div class="page" id="page-tasks">
+      <div class="filter-bar">
+        <input class="search-input" type="text" placeholder="Buscar tareas…" oninput="filterTasks(this.value)" />
+        <select class="filter-select" onchange="filterTaskStatus(this.value)">
+          <option value="">Todos los estados</option>
+          <option value="active">Activa</option>
+          <option value="paused">Pausada</option>
+          <option value="disabled">Desactivada</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Tareas configuradas</div>
+          <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Nombre</th><th>Archivo</th><th>Programación</th><th>Opciones</th><th>Estado</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="tasks-body">
+            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PAGE: LOGS -->
+    <div class="page" id="page-logs">
+      <div class="filter-bar">
+        <select class="filter-select" id="log-filter-task" onchange="loadLogs(1)">
+          <option value="">Todas las tareas</option>
+        </select>
+        <select class="filter-select" onchange="logStatusFilter=this.value;loadLogs(1)">
+          <option value="">Todos los estados</option>
+          <option value="success">Exitosas</option>
+          <option value="failed">Fallidas</option>
+          <option value="running">En ejecución</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Historial de ejecuciones</div>
+          <div class="table-actions">
+            <button class="btn btn-danger btn-sm" onclick="clearLogs()" title="Elimina todos los registros e historial del historial (no afecta ejecuciones activas)">
+              <i class="fa-solid fa-trash"></i> Limpiar historial
+            </button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tarea</th><th>Inicio</th><th>Duración</th><th>Conexiones</th><th>Pivots</th><th>Estado</th><th>Log</th></tr>
+          </thead>
+          <tbody id="logs-body">
+            <tr><td colspan="8"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <div class="page-info" id="logs-info">—</div>
+          <div class="page-btns">
+            <button class="btn btn-ghost btn-sm" id="btn-prev" onclick="loadLogs(logsPage-1)">‹ Anterior</button>
+            <button class="btn btn-ghost btn-sm" id="btn-next" onclick="loadLogs(logsPage+1)">Siguiente ›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: REPORTS -->
+    <div class="page" id="page-reports">
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Archivos de log disponibles</div>
+          <div class="table-actions">
+            <span style="font-size:12px;color:var(--text2)">Haz clic en <i class="fa-solid fa-download"></i> para descargar</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Tarea</th><th>Fecha inicio</th><th>Estado</th><th>Duración</th><th>Error</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="reports-body">
+            <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PÁGINA: REPORTES PROGRAMADOS -->
+    <div class="page" id="page-schedreports">
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Reportes programados</div>
+          <div class="table-actions">
+            <button class="btn btn-primary btn-sm" onclick="openNewSchedReport()"><i class="fa-solid fa-plus"></i> Nuevo reporte</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Nombre</th><th>Canal</th><th>Programación</th><th>Ventana</th><th>Tareas</th><th>Estado</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="schedreports-body">
+            <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL: NUEVA/EDITAR TAREA -->
+<div class="modal-overlay" id="modal-task">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-task-title">Nueva tarea</div>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-task')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group form-full">
+          <label>Nombre de la tarea</label>
+          <input id="f-name" type="text" placeholder="Ej: Reporte ventas mensual">
+        </div>
+        <div class="form-group form-full">
+          <label>Descripción</label>
+          <input id="f-desc" type="text" placeholder="Descripción opcional">
+        </div>
+        <div class="form-group form-full">
+          <label>Ruta del archivo Excel</label>
+          <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
+        </div>
+      </div>
+
+      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">PROGRAMACIÓN</div>
+      <div class="schedule-builder">
+        <div class="sch-tabs">
+          <button class="sch-tab active" onclick="setSchTab('once','this')" id="tab-once">Una vez al día</button>
+          <button class="sch-tab" onclick="setSchTab('interval','this')" id="tab-interval">Repetir cada…</button>
+          <button class="sch-tab" onclick="setSchTab('cron','this')" id="tab-cron">Expresión Cron</button>
+        </div>
+
+        <div class="sch-panel active" id="sch-once">
+          <div class="form-group">
+            <label>Hora de ejecución</label>
+            <input id="f-hour" type="number" min="0" max="23" value="6" placeholder="6">
+          </div>
+          <div class="form-group">
+            <label>Minutos</label>
+            <input id="f-min" type="number" min="0" max="59" value="0" placeholder="0">
+          </div>
+        </div>
+
+        <div class="sch-panel" id="sch-interval">
+          <div class="form-group">
+            <label>Hora de inicio</label>
+            <input id="f-shour" type="number" min="0" max="23" value="6" placeholder="6">
+          </div>
+          <div class="form-group">
+            <label>Minuto de inicio</label>
+            <input id="f-smin" type="number" min="0" max="59" value="0" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Repetir cada N horas (0 = usar minutos)</label>
+            <input id="f-ihours" type="number" min="0" max="23" value="1" placeholder="1">
+          </div>
+          <div class="form-group">
+            <label>O cada N minutos</label>
+            <input id="f-imins" type="number" min="1" max="59" value="60" placeholder="60">
+          </div>
+        </div>
+
+        <div class="sch-panel" id="sch-cron">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Expresión cron (minuto hora día mes día_semana)</label>
+            <input id="f-cron" type="text" placeholder="0 6 * * 1-5" value="0 6 * * *">
+            <span style="font-size:11px;color:var(--text2);margin-top:4px">Ej: <code>0 6 * * 1-5</code> = lunes a viernes a las 6:00am</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">OPCIONES</div>
+      <div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div>Actualizar conexiones externas</div>
+            <div class="toggle-desc">Refresca datos de Power Query, SQL, etc.</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="f-conns" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div>Refrescar tablas dinámicas</div>
+            <div class="toggle-desc">Actualiza todos los PivotTables del libro</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="f-pivots" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div>Guardar al finalizar</div>
+            <div class="toggle-desc">Guarda el archivo si la actualización fue exitosa</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="f-save" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div>Mostrar ventana de Excel</div>
+            <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="f-visible"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+    <!-- Sección notificaciones (solo al editar) -->
+    <div id="notif-section" style="display:none;padding:0 24px 16px">
+      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">NOTIFICACIONES</div>
+      <div id="notif-rules-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="openAddNotifRule()"><i class="fa-solid fa-plus"></i> Agregar regla</button>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-task')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="saveTask()"><i class="fa-solid fa-floppy-disk"></i> Guardar tarea</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVA REGLA DE NOTIFICACIÓN -->
+<div class="modal-overlay" id="modal-notif-rule">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <div class="modal-title">Regla de notificación</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-notif-rule')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Canal</label>
+          <select id="nr-channel" onchange="updateNotifChannelUI()">
+            <option value="email">Email</option>
+            <option value="whatsapp">WhatsApp</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Disparador</label>
+          <select id="nr-trigger">
+            <option value="always">Siempre (éxito o fallo)</option>
+            <option value="on_error">Solo errores</option>
+            <option value="on_success">Solo éxitos</option>
+            <option value="first_run_of_day">Primera ejecución del día</option>
+          </select>
+        </div>
+        <div class="form-group form-full" id="nr-email-group">
+          <label>Correos destinatarios</label>
+          <input id="nr-emails" type="text" placeholder="a@empresa.com, b@empresa.com">
+          <span style="font-size:11px;color:var(--text2);margin-top:4px">Separados por coma</span>
+        </div>
+        <div class="form-group form-full" id="nr-wa-group" style="display:none">
+          <label>Destinatarios WhatsApp (CallMeBot)</label>
+          <div id="nr-wa-recipients" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addWaRecipient()"><i class="fa-solid fa-plus"></i> Agregar número</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-notif-rule')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="saveNotifRule()"><i class="fa-solid fa-floppy-disk"></i> Guardar regla</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REPORTE PROGRAMADO -->
+<div class="modal-overlay" id="modal-schedreport">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-schedreport-title">Nuevo reporte programado</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-schedreport')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group form-full">
+          <label>Nombre del reporte</label>
+          <input id="sr-name" type="text" placeholder="Ej: Resumen diario de ejecuciones">
+        </div>
+        <div class="form-group">
+          <label>Canal</label>
+          <select id="sr-channel" onchange="updateSrChannelUI()">
+            <option value="email">Email</option>
+            <option value="whatsapp">WhatsApp</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ventana (últimas N horas)</label>
+          <input id="sr-lookback" type="number" min="1" value="24">
+        </div>
+        <div class="form-group form-full" id="sr-email-group">
+          <label>Correos destinatarios</label>
+          <input id="sr-emails" type="text" placeholder="a@empresa.com, b@empresa.com">
+          <span style="font-size:11px;color:var(--text2);margin-top:4px">Separados por coma</span>
+        </div>
+        <div class="form-group form-full" id="sr-wa-group" style="display:none">
+          <label>Destinatarios WhatsApp (CallMeBot)</label>
+          <div id="sr-wa-recipients" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addSrWaRecipient()"><i class="fa-solid fa-plus"></i> Agregar número</button>
+        </div>
+        <div class="form-group form-full">
+          <label>Filtrar tareas (dejar vacío = todas)</label>
+          <select id="sr-tasks" multiple style="height:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px"></select>
+          <span style="font-size:11px;color:var(--text2);margin-top:4px">Ctrl+clic para seleccionar varias</span>
+        </div>
+      </div>
+      <div style="margin:16px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">PROGRAMACIÓN</div>
+      <div class="schedule-builder">
+        <div class="sch-tabs">
+          <button type="button" class="sch-tab active" onclick="setSrTab('once')" id="sr-tab-once">Una vez al día</button>
+          <button type="button" class="sch-tab" onclick="setSrTab('interval')" id="sr-tab-interval">Repetir cada…</button>
+          <button type="button" class="sch-tab" onclick="setSrTab('cron')" id="sr-tab-cron">Expresión Cron</button>
+        </div>
+        <div class="sch-panel active" id="sr-sch-once">
+          <div class="form-group"><label>Hora</label><input id="sr-hour" type="number" min="0" max="23" value="8"></div>
+          <div class="form-group"><label>Minutos</label><input id="sr-min" type="number" min="0" max="59" value="0"></div>
+        </div>
+        <div class="sch-panel" id="sr-sch-interval">
+          <div class="form-group"><label>Hora de inicio</label><input id="sr-shour" type="number" min="0" max="23" value="6"></div>
+          <div class="form-group"><label>Minuto inicio</label><input id="sr-smin" type="number" min="0" max="59" value="0"></div>
+          <div class="form-group"><label>Cada N horas (0=usar min)</label><input id="sr-ihours" type="number" min="0" max="23" value="4"></div>
+          <div class="form-group"><label>O cada N minutos</label><input id="sr-imins" type="number" min="1" max="59" value="60"></div>
+        </div>
+        <div class="sch-panel" id="sr-sch-cron">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Expresión cron</label>
+            <input id="sr-cron" type="text" placeholder="0 8 * * *" value="0 8 * * *">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-schedreport')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="saveSchedReport()"><i class="fa-solid fa-floppy-disk"></i> Guardar reporte</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VER LOG -->
+<div class="modal-overlay" id="modal-log">
+  <div class="modal log-modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-log-title">Log de ejecución</div>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-log')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="log-content" id="log-content">Cargando…</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="log-dl-btn" onclick="downloadLog()"><i class="fa-solid fa-download"></i> Descargar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-log')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const API = '/api';
+let currentPage = 'dashboard';
+let editingTaskId = null;
+let currentSchTab = 'once';
+let logsPage = 1;
+let logStatusFilter = '';
+let currentLogRunId = null;
+let allTasks = [];
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+const pageMeta = {
+  dashboard:    { title: 'Dashboard',                  sub: 'Resumen general del sistema' },
+  tasks:        { title: 'Tareas',                     sub: 'Gestión de tareas programadas' },
+  logs:         { title: 'Historial de ejecuciones',   sub: 'Registro completo de ejecuciones' },
+  reports:      { title: 'Logs y Archivos',            sub: 'Descarga archivos de log' },
+  schedreports: { title: 'Reportes programados',       sub: 'Resúmenes automáticos por email o WhatsApp' },
+};
+
+function goPage(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + p).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if (el.textContent.trim().toLowerCase().includes(pageMeta[p].title.toLowerCase().split(' ')[0]))
+      el.classList.add('active');
+  });
+  document.getElementById('page-title').textContent = pageMeta[p].title;
+  document.getElementById('page-sub').textContent = pageMeta[p].sub;
+  currentPage = p;
+  if (p === 'dashboard') loadDashboard();
+  if (p === 'tasks') loadTasks();
+  if (p === 'logs') { loadLogTaskFilter(); loadLogs(1); }
+  if (p === 'reports') loadReports();
+  if (p === 'schedreports') loadSchedReports();
+}
+
+// ══════════════════════════════════════════════════════
+// FETCH HELPERS
+// ══════════════════════════════════════════════════════
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
+  return r.status === 204 ? null : r.json();
+}
+
+// ══════════════════════════════════════════════════════
+// TOASTS
+// ══════════════════════════════════════════════════════
+function toast(msg, type = 'info') {
+  const d = document.createElement('div');
+  d.className = `toast toast-${type === 'success' ? 'ok' : type === 'error' ? 'err' : 'info'}`;
+  const iconMap = { success: 'fa-check', error: 'fa-xmark', info: 'fa-circle-info' };
+  d.innerHTML = `<span><i class="fa-solid ${iconMap[type] || 'fa-circle-info'}"></i></span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(d);
+  setTimeout(() => d.remove(), 3500);
+}
+
+// ══════════════════════════════════════════════════════
+// STATS / DASHBOARD
+// ══════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const [stats, tasks] = await Promise.all([api('GET', '/stats'), api('GET', '/tasks')]);
+    document.getElementById('st-active').textContent  = stats.active_tasks;
+    document.getElementById('st-total').textContent   = `de ${stats.total_tasks} total`;
+    document.getElementById('st-ok').textContent      = stats.success_runs;
+    document.getElementById('st-rate').textContent    = `${stats.success_rate}% tasa de éxito`;
+    document.getElementById('st-fail').textContent    = stats.failed_runs;
+    document.getElementById('st-running').textContent = stats.running_now;
+    document.getElementById('badge-tasks').textContent = stats.total_tasks;
+
+    // Server status
+    document.getElementById('srv-dot').style.background = 'var(--green)';
+    document.getElementById('srv-label').textContent = 'Servicio activo';
+
+    // Upcoming table
+    renderUpcoming(tasks);
+  } catch(e) {
+    document.getElementById('srv-dot').style.background = 'var(--red)';
+    document.getElementById('srv-label').textContent = 'Sin conexión';
+    toast('Error cargando dashboard: ' + e.message, 'error');
+  }
+}
+
+function renderUpcoming(tasks) {
+  const body = document.getElementById('upcoming-body');
+  if (!tasks.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
+    return;
+  }
+  const sorted = [...tasks].sort((a,b) => {
+    if (!a.next_run_at) return 1;
+    if (!b.next_run_at) return -1;
+    return new Date(a.next_run_at) - new Date(b.next_run_at);
+  });
+  body.innerHTML = sorted.map(t => `
+    <tr>
+      <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(t.description)}</div></td>
+      <td><span class="schedule-pill">${schLabel(t)}</span></td>
+      <td style="font-family:var(--mono);font-size:12px">${fmtDate(t.last_run_at)}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan)">${fmtDate(t.next_run_at)}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${esc(t.name)}')"><i class="fa-solid fa-play"></i> Ahora</button>
+      </td>
+    </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// TASKS PAGE
+// ══════════════════════════════════════════════════════
+async function loadTasks() {
+  try {
+    allTasks = await api('GET', '/tasks');
+    renderTasks(allTasks);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function renderTasks(tasks) {
+  const body = document.getElementById('tasks-body');
+  if (!tasks.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
+    return;
+  }
+  body.innerHTML = tasks.map(t => `
+    <tr>
+      <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2)">${esc(t.description)}</div></td>
+      <td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text2)" title="${esc(t.file_path)}">${esc(t.file_path)}</td>
+      <td><span class="schedule-pill">${schLabel(t)}</span></td>
+      <td style="font-size:12px">
+        ${t.refresh_connections ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Conexiones&nbsp;' : ''}
+        ${t.refresh_pivots ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Pivots' : ''}
+        ${t.save_on_success ? '&nbsp;<span style="color:var(--cyan)"><i class="fa-solid fa-floppy-disk"></i></span>' : ''}
+      </td>
+      <td>${statusBadge(t.status)}</td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${esc(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i></button>
+          ${t.status==='active'
+            ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i></button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i></button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}','${esc(t.name)}')"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function filterTasks(q) {
+  const f = allTasks.filter(t => t.name.toLowerCase().includes(q.toLowerCase()) || t.file_path.toLowerCase().includes(q.toLowerCase()));
+  renderTasks(f);
+}
+function filterTaskStatus(s) {
+  const f = s ? allTasks.filter(t => t.status === s) : allTasks;
+  renderTasks(f);
+}
+
+// ══════════════════════════════════════════════════════
+// LOGS PAGE
+// ══════════════════════════════════════════════════════
+async function loadLogTaskFilter() {
+  const tasks = await api('GET', '/tasks').catch(() => []);
+  const sel = document.getElementById('log-filter-task');
+  sel.innerHTML = '<option value="">Todas las tareas</option>' +
+    tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+}
+
+async function loadLogs(page = 1) {
+  logsPage = page;
+  const taskId = document.getElementById('log-filter-task').value;
+  let url = `/logs?page=${page}&page_size=20`;
+  if (taskId) url += `&task_id=${taskId}`;
+  if (logStatusFilter) url += `&status=${logStatusFilter}`;
+  try {
+    const data = await api('GET', url);
+    const body = document.getElementById('logs-body');
+    if (!data.items.length) {
+      body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><div class="empty-sub">Sin ejecuciones registradas</div></div></td></tr>`;
+    } else {
+      body.innerHTML = data.items.map(r => `
+        <tr>
+          <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
+          <td><strong>${esc(r.task_name)}</strong></td>
+          <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
+          <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
+          <td style="font-family:var(--mono);font-size:12px">${r.connections ?? 0}</td>
+          <td style="font-family:var(--mono);font-size:12px">
+            ${r.pivots_ok > 0 ? `<span style="color:var(--green)">${r.pivots_ok} <i class="fa-solid fa-check"></i></span>` : ''}
+            ${r.pivots_err > 0 ? `<span style="color:var(--red)"> ${r.pivots_err} <i class="fa-solid fa-xmark"></i></span>` : ''}
+            ${r.pivots_ok === 0 && r.pivots_err === 0 ? '—' : ''}
+          </td>
+          <td>${runStatusBadge(r.status)}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              ${r.log_file ? `<button class="btn btn-ghost btn-sm" onclick="viewLog(${r.id},'${esc(r.task_name)}')" ><i class="fa-solid fa-eye"></i> Ver</button>` : ''}
+              ${r.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopRun(${r.id})">&#9632; Detener</button>` : ''}
+            </div>
+          </td>
+        </tr>`).join('');
+    }
+    const total = data.total;
+    const pages = Math.ceil(total / 20);
+    document.getElementById('logs-info').textContent = `${total} registros — Pág. ${page}/${pages || 1}`;
+    document.getElementById('btn-prev').disabled = page <= 1;
+    document.getElementById('btn-next').disabled = page >= pages;
+  } catch(e) { toast('Error cargando logs: ' + e.message, 'error'); }
+}
+
+async function clearLogs() {
+  const taskId = document.getElementById('log-filter-task').value;
+  const scope = taskId ? 'las ejecuciones de esta tarea' : 'TODO el historial de ejecuciones';
+  if (!confirm(`¿Seguro que deseas eliminar ${scope}?\nEsta acción no se puede deshacer.`)) return;
+  try {
+    const url = taskId ? `/logs?task_id=${taskId}` : '/logs';
+    const data = await api('DELETE', url);
+    toast(`${data.deleted} registros eliminados`, 'success');
+    loadLogs(1);
+  } catch(e) { toast('Error al limpiar historial: ' + e.message, 'error'); }
+}
+
+async function loadReports() {
+  try {
+    const data = await api('GET', '/logs?page=1&page_size=100');
+    const body = document.getElementById('reports-body');
+    const withLogs = data.items.filter(r => r.log_file);
+    if (!withLogs.length) {
+      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin archivos de log disponibles</div></div></td></tr>`;
+      return;
+    }
+    body.innerHTML = withLogs.map(r => `
+      <tr>
+        <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
+        <td><strong>${esc(r.task_name)}</strong></td>
+        <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
+        <td>${runStatusBadge(r.status)}</td>
+        <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
+        <td style="font-size:12px;color:var(--red);max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.error_msg||'')}">${r.error_msg ? r.error_msg.slice(0,80) + '…' : '—'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" onclick="viewLog(${r.id},'${esc(r.task_name)}')"><i class="fa-solid fa-eye"></i> Ver</button>
+            <button class="btn btn-primary btn-sm" onclick="downloadLogById(${r.id})"><i class="fa-solid fa-download"></i></button>
+          </div>
+        </td>
+      </tr>`).join('');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// LOG MODAL
+// ══════════════════════════════════════════════════════
+async function viewLog(runId, taskName) {
+  currentLogRunId = runId;
+  document.getElementById('modal-log-title').textContent = `Log — ${taskName} #${runId}`;
+  document.getElementById('log-content').textContent = 'Cargando…';
+  document.getElementById('modal-log').classList.add('open');
+  try {
+    const data = await api('GET', `/logs/${runId}/content`);
+    const lines = data.content.split('\n');
+    document.getElementById('log-content').innerHTML = lines.map(l => {
+      const cls = l.includes('ERROR') ? 'log-line-error' : l.includes('WARNING') ? 'log-line-warn' : l.includes('DEBUG') ? 'log-line-debug' : 'log-line-info';
+      return `<span class="${cls}">${esc(l)}</span>`;
+    }).join('\n');
+  } catch(e) {
+    document.getElementById('log-content').textContent = 'No se pudo cargar el log: ' + e.message;
+  }
+}
+
+function downloadLog() { if (currentLogRunId) downloadLogById(currentLogRunId); }
+function downloadLogById(id) { window.open(`${API}/logs/${id}/download`, '_blank'); }
+
+// ══════════════════════════════════════════════════════
+// TASK MODAL
+// ══════════════════════════════════════════════════════
+function openNewTask() {
+  editingTaskId = null;
+  document.getElementById('modal-task-title').textContent = 'Nueva tarea';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-path').value = '';
+  document.getElementById('f-hour').value = 6;
+  document.getElementById('f-min').value = 0;
+  document.getElementById('f-shour').value = 6;
+  document.getElementById('f-smin').value = 0;
+  document.getElementById('f-ihours').value = 1;
+  document.getElementById('f-imins').value = 60;
+  document.getElementById('f-cron').value = '0 6 * * *';
+  document.getElementById('f-conns').checked = true;
+  document.getElementById('f-pivots').checked = true;
+  document.getElementById('f-save').checked = true;
+  document.getElementById('f-visible').checked = false;
+  document.getElementById('notif-section').style.display = 'none';
+  document.getElementById('notif-rules-list').innerHTML = '';
+  setSchTab('once');
+  document.getElementById('modal-task').classList.add('open');
+}
+
+async function copyTask(id) {
+  const t = await api('GET', `/tasks/${id}`);
+  editingTaskId = null;
+  document.getElementById('modal-task-title').textContent = 'Copiar tarea';
+  document.getElementById('f-name').value = 'Copia de ' + t.name;
+  document.getElementById('f-desc').value = t.description || '';
+  document.getElementById('f-path').value = t.file_path;
+  document.getElementById('f-conns').checked = t.refresh_connections;
+  document.getElementById('f-pivots').checked = t.refresh_pivots;
+  document.getElementById('f-save').checked = t.save_on_success;
+  document.getElementById('f-visible').checked = t.excel_visible;
+
+  const cfg = t.schedule_config || {};
+  if (t.schedule_type === 'once_daily') {
+    setSchTab('once');
+    document.getElementById('f-hour').value = cfg.hour ?? 6;
+    document.getElementById('f-min').value  = cfg.minute ?? 0;
+  } else if (t.schedule_type === 'interval') {
+    setSchTab('interval');
+    document.getElementById('f-shour').value  = cfg.start_hour ?? 6;
+    document.getElementById('f-smin').value   = cfg.start_minute ?? 0;
+    document.getElementById('f-ihours').value = cfg.hours ?? 1;
+    document.getElementById('f-imins').value  = cfg.minutes ?? 60;
+  } else {
+    setSchTab('cron');
+    document.getElementById('f-cron').value = cfg.cron ?? '0 6 * * *';
+  }
+  document.getElementById('notif-section').style.display = 'none';
+  document.getElementById('notif-rules-list').innerHTML = '';
+  document.getElementById('modal-task').classList.add('open');
+}
+
+async function openEditTask(id) {
+  const t = await api('GET', `/tasks/${id}`);
+  editingTaskId = id;
+  document.getElementById('modal-task-title').textContent = 'Editar tarea';
+  document.getElementById('f-name').value = t.name;
+  document.getElementById('f-desc').value = t.description || '';
+  document.getElementById('f-path').value = t.file_path;
+  document.getElementById('f-conns').checked = t.refresh_connections;
+  document.getElementById('f-pivots').checked = t.refresh_pivots;
+  document.getElementById('f-save').checked = t.save_on_success;
+  document.getElementById('f-visible').checked = t.excel_visible;
+
+  const cfg = t.schedule_config || {};
+  if (t.schedule_type === 'once_daily') {
+    setSchTab('once');
+    document.getElementById('f-hour').value = cfg.hour ?? 6;
+    document.getElementById('f-min').value  = cfg.minute ?? 0;
+  } else if (t.schedule_type === 'interval') {
+    setSchTab('interval');
+    document.getElementById('f-shour').value  = cfg.start_hour ?? 6;
+    document.getElementById('f-smin').value   = cfg.start_minute ?? 0;
+    document.getElementById('f-ihours').value = cfg.hours ?? 1;
+    document.getElementById('f-imins').value  = cfg.minutes ?? 60;
+  } else {
+    setSchTab('cron');
+    document.getElementById('f-cron').value = cfg.cron ?? '0 6 * * *';
+  }
+  document.getElementById('notif-section').style.display = 'block';
+  loadNotifRules(id);
+  document.getElementById('modal-task').classList.add('open');
+}
+
+async function saveTask() {
+  const name = document.getElementById('f-name').value.trim();
+  const path = document.getElementById('f-path').value.trim();
+  if (!name || !path) { toast('Nombre y ruta son obligatorios', 'error'); return; }
+
+  let schedule_type, schedule_config;
+  if (currentSchTab === 'once') {
+    schedule_type = 'once_daily';
+    schedule_config = { hour: +document.getElementById('f-hour').value, minute: +document.getElementById('f-min').value };
+  } else if (currentSchTab === 'interval') {
+    schedule_type = 'interval';
+    schedule_config = {
+      start_hour: +document.getElementById('f-shour').value,
+      start_minute: +document.getElementById('f-smin').value,
+      hours: +document.getElementById('f-ihours').value,
+      minutes: +document.getElementById('f-imins').value,
+    };
+  } else {
+    schedule_type = 'cron';
+    schedule_config = { cron: document.getElementById('f-cron').value.trim() };
+  }
+
+  const body = {
+    name,
+    description: document.getElementById('f-desc').value,
+    file_path: path,
+    schedule_type,
+    schedule_config,
+    refresh_connections: document.getElementById('f-conns').checked,
+    refresh_pivots:      document.getElementById('f-pivots').checked,
+    save_on_success:     document.getElementById('f-save').checked,
+    excel_visible:       document.getElementById('f-visible').checked,
+  };
+
+  try {
+    if (editingTaskId) {
+      await api('PUT', `/tasks/${editingTaskId}`, body);
+      toast('Tarea actualizada', 'success');
+    } else {
+      await api('POST', '/tasks', body);
+      toast('Tarea creada', 'success');
+    }
+    closeModal('modal-task');
+    if (currentPage === 'tasks') loadTasks();
+    if (currentPage === 'dashboard') loadDashboard();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function runNow(id, name) {
+  try {
+    await api('POST', `/tasks/${id}/run-now`);
+    toast(`"${name}" iniciada`, 'info');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function togglePause(id, action) {
+  try {
+    await api('POST', `/tasks/${id}/${action === 'pause' ? 'pause' : 'resume'}`);
+    toast(action === 'pause' ? 'Tarea pausada' : 'Tarea reanudada', 'success');
+    loadTasks();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteTask(id, name) {
+  if (!confirm(`¿Eliminar la tarea "${name}"?`)) return;
+  try {
+    await api('DELETE', `/tasks/${id}`);
+    toast(`Tarea "${name}" eliminada`, 'success');
+    loadTasks();
+    loadDashboard();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// SCHEDULE TABS
+// ══════════════════════════════════════════════════════
+function setSchTab(tab) {
+  currentSchTab = tab;
+  document.querySelectorAll('.sch-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.sch-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('sch-' + tab).classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════
+// MODAL HELPERS
+// ══════════════════════════════════════════════════════
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  if (o.id === 'modal-task' || o.id === 'modal-notif-rule') return; // no cerrar al hacer click fuera
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ══════════════════════════════════════════════════════
+// FORMATTERS
+// ══════════════════════════════════════════════════════
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function fmtDate(d) {
+  if (!d) return '<span style="color:var(--text3)">—</span>';
+  const dt = new Date(d);
+  return dt.toLocaleString('es-PE', { dateStyle:'short', timeStyle:'short' });
+}
+
+function statusBadge(s) {
+  const map = { active:'green', paused:'yellow', disabled:'gray' };
+  const lbl = { active:'Activa', paused:'Pausada', disabled:'Inactiva' };
+  return `<span class="badge badge-${map[s]||'gray'}">${lbl[s]||s}</span>`;
+}
+
+function runStatusBadge(s) {
+  const map = { success:'green', failed:'red', running:'blue', skipped:'gray', cancelled:'yellow' };
+  const lbl = { success:'Exitosa', failed:'Fallida', running:'Ejecutando', skipped:'Omitida', cancelled:'Cancelada' };
+  return `<span class="badge badge-${map[s]||'gray'}">${lbl[s]||s}</span>`;
+}
+
+function schLabel(t) {
+  const cfg = t.schedule_config || {};
+  if (t.schedule_type === 'once_daily')
+    return `Diario ${String(cfg.hour||0).padStart(2,'0')}:${String(cfg.minute||0).padStart(2,'0')}`;
+  if (t.schedule_type === 'interval') {
+    const h = cfg.hours; const m = cfg.minutes;
+    const rep = h >= 1 ? `cada ${h}h` : `cada ${m}min`;
+    return `Desde ${String(cfg.start_hour||0).padStart(2,'0')}:${String(cfg.start_minute||0).padStart(2,'0')} — ${rep}`;
+  }
+  if (t.schedule_type === 'cron') return `CRON: ${cfg.cron}`;
+  return t.schedule_type;
+}
+
+// ══════════════════════════════════════════════════════
+// STOP RUN
+// ══════════════════════════════════════════════════════
+async function stopRun(runId) {
+  if (!confirm('¿Detener esta ejecución en curso?')) return;
+  try {
+    await api('POST', `/logs/${runId}/stop`);
+    toast('Detención solicitada', 'info');
+    loadLogs(logsPage);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// REFRESH ALL
+// ══════════════════════════════════════════════════════
+function refreshAll() {
+  if (currentPage === 'dashboard') loadDashboard();
+  if (currentPage === 'tasks') loadTasks();
+  if (currentPage === 'logs') loadLogs(logsPage);
+  if (currentPage === 'reports') loadReports();
+  toast('Datos actualizados', 'info');
+}
+
+// ══════════════════════════════════════════════════════
+// NOTIFICATION RULES
+// ══════════════════════════════════════════════════════
+const TRIGGER_LABELS = {
+  always:           'Siempre',
+  on_error:         'Solo errores',
+  on_success:       'Solo éxitos',
+  first_run_of_day: 'Primera del día',
+};
+
+async function loadNotifRules(taskId) {
+  try {
+    const rules = await api('GET', `/tasks/${taskId}/notifications`);
+    const el = document.getElementById('notif-rules-list');
+    if (!rules.length) {
+      el.innerHTML = '<div style="color:var(--text2);font-size:12px">Sin reglas. Agrega una con el botón de abajo.</div>';
+      return;
+    }
+    el.innerHTML = rules.map(r => {
+      const chIcon = r.channel === 'email' ? '📧' : '💬';
+      const recip = r.channel === 'email'
+        ? (r.recipients || []).join(', ')
+        : (r.recipients || []).map(x => `+${x.phone}`).join(', ');
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:12px">
+        <span>${chIcon}</span>
+        <span style="flex:1"><strong>${TRIGGER_LABELS[r.trigger] || r.trigger}</strong> → ${esc(recip)}</span>
+        <span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Activa' : 'Inactiva'}</span>
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="deleteNotifRule(${r.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+      </div>`;
+    }).join('');
+  } catch(e) { toast('Error cargando reglas: ' + e.message, 'error'); }
+}
+
+function openAddNotifRule() {
+  document.getElementById('nr-channel').value = 'email';
+  document.getElementById('nr-trigger').value = 'always';
+  document.getElementById('nr-emails').value = '';
+  document.getElementById('nr-wa-recipients').innerHTML = '';
+  updateNotifChannelUI();
+  document.getElementById('modal-notif-rule').classList.add('open');
+}
+
+function updateNotifChannelUI() {
+  const ch = document.getElementById('nr-channel').value;
+  document.getElementById('nr-email-group').style.display = ch === 'email' ? '' : 'none';
+  document.getElementById('nr-wa-group').style.display = ch === 'whatsapp' ? '' : 'none';
+}
+
+function addWaRecipient(containerId = 'nr-wa-recipients') {
+  const el = document.getElementById(containerId);
+  const idx = el.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:6px;align-items:center';
+  div.innerHTML = `
+    <input type="text" placeholder="+51999123456" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px" data-wa-phone>
+    <input type="text" placeholder="API Key" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px" data-wa-apikey>
+    <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>`;
+  el.appendChild(div);
+}
+
+async function saveNotifRule() {
+  if (!editingTaskId) return;
+  const channel = document.getElementById('nr-channel').value;
+  const trigger = document.getElementById('nr-trigger').value;
+  let recipients;
+  if (channel === 'email') {
+    recipients = document.getElementById('nr-emails').value.split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    recipients = [];
+    document.getElementById('nr-wa-recipients').querySelectorAll('div').forEach(row => {
+      const phone = row.querySelector('[data-wa-phone]')?.value.trim().replace(/^\+/, '');
+      const apikey = row.querySelector('[data-wa-apikey]')?.value.trim();
+      if (phone && apikey) recipients.push({ phone, apikey });
+    });
+  }
+  if (!recipients.length) { toast('Agrega al menos un destinatario', 'error'); return; }
+  try {
+    await api('POST', `/tasks/${editingTaskId}/notifications`, { trigger, channel, recipients });
+    toast('Regla guardada', 'success');
+    closeModal('modal-notif-rule');
+    loadNotifRules(editingTaskId);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteNotifRule(ruleId) {
+  if (!confirm('¿Eliminar esta regla de notificación?')) return;
+  try {
+    await api('DELETE', `/notifications/${ruleId}`);
+    toast('Regla eliminada', 'success');
+    if (editingTaskId) loadNotifRules(editingTaskId);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// SCHEDULED REPORTS
+// ══════════════════════════════════════════════════════
+let editingReportId = null;
+let currentSrTab = 'once';
+
+async function loadSchedReports() {
+  try {
+    const reports = await api('GET', '/reports');
+    const body = document.getElementById('schedreports-body');
+    if (!reports.length) {
+      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin reportes programados. Crea uno con "Nuevo reporte".</div></div></td></tr>`;
+      return;
+    }
+    body.innerHTML = reports.map(r => {
+      const chIcon = r.channel === 'email' ? '📧' : '💬';
+      const recip = r.channel === 'email'
+        ? (r.recipients || []).join(', ')
+        : (r.recipients || []).map(x => `+${x.phone}`).join(', ');
+      const taskLabel = r.task_ids ? `${r.task_ids.length} tarea(s)` : 'Todas';
+      return `<tr>
+        <td><strong>${esc(r.name)}</strong></td>
+        <td>${chIcon} ${r.channel === 'email' ? 'Email' : 'WhatsApp'}</td>
+        <td style="font-family:var(--mono);font-size:12px">${schLabel(r)}</td>
+        <td style="font-family:var(--mono);font-size:12px">Últimas ${r.lookback_hours}h</td>
+        <td>${taskLabel}</td>
+        <td><span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <div style="display:flex;gap:4px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="runSchedReport(${r.id},'${esc(r.name)}')"><i class="fa-solid fa-play"></i></button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="deleteSchedReport(${r.id},'${esc(r.name)}')"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function openNewSchedReport() {
+  editingReportId = null;
+  document.getElementById('modal-schedreport-title').textContent = 'Nuevo reporte programado';
+  document.getElementById('sr-name').value = '';
+  document.getElementById('sr-channel').value = 'email';
+  document.getElementById('sr-lookback').value = 24;
+  document.getElementById('sr-emails').value = '';
+  document.getElementById('sr-wa-recipients').innerHTML = '';
+  document.getElementById('sr-hour').value = 8;
+  document.getElementById('sr-min').value = 0;
+  document.getElementById('sr-shour').value = 6;
+  document.getElementById('sr-smin').value = 0;
+  document.getElementById('sr-ihours').value = 4;
+  document.getElementById('sr-imins').value = 60;
+  document.getElementById('sr-cron').value = '0 8 * * *';
+  setSrTab('once');
+  updateSrChannelUI();
+  await populateSrTaskSelect([]);
+  document.getElementById('modal-schedreport').classList.add('open');
+}
+
+async function populateSrTaskSelect(selectedIds) {
+  const tasks = await api('GET', '/tasks');
+  const sel = document.getElementById('sr-tasks');
+  sel.innerHTML = tasks.map(t =>
+    `<option value="${t.id}" ${(selectedIds||[]).includes(t.id) ? 'selected' : ''}>${esc(t.name)}</option>`
+  ).join('');
+}
+
+function updateSrChannelUI() {
+  const ch = document.getElementById('sr-channel').value;
+  document.getElementById('sr-email-group').style.display = ch === 'email' ? '' : 'none';
+  document.getElementById('sr-wa-group').style.display = ch === 'whatsapp' ? '' : 'none';
+}
+
+function addSrWaRecipient() { addWaRecipient('sr-wa-recipients'); }
+
+function setSrTab(tab) {
+  currentSrTab = tab;
+  ['once','interval','cron'].forEach(t => {
+    document.getElementById('sr-tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('sr-sch-' + t).classList.toggle('active', t === tab);
+  });
+}
+
+async function saveSchedReport() {
+  const name = document.getElementById('sr-name').value.trim();
+  if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+
+  const channel = document.getElementById('sr-channel').value;
+  let recipients;
+  if (channel === 'email') {
+    recipients = document.getElementById('sr-emails').value.split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    recipients = [];
+    document.getElementById('sr-wa-recipients').querySelectorAll('div').forEach(row => {
+      const phone = row.querySelector('[data-wa-phone]')?.value.trim().replace(/^\+/, '');
+      const apikey = row.querySelector('[data-wa-apikey]')?.value.trim();
+      if (phone && apikey) recipients.push({ phone, apikey });
+    });
+  }
+  if (!recipients.length) { toast('Agrega al menos un destinatario', 'error'); return; }
+
+  let schedule_type, schedule_config;
+  if (currentSrTab === 'once') {
+    schedule_type = 'once_daily';
+    schedule_config = { hour: +document.getElementById('sr-hour').value, minute: +document.getElementById('sr-min').value };
+  } else if (currentSrTab === 'interval') {
+    schedule_type = 'interval';
+    schedule_config = { start_hour: +document.getElementById('sr-shour').value, start_minute: +document.getElementById('sr-smin').value, hours: +document.getElementById('sr-ihours').value, minutes: +document.getElementById('sr-imins').value };
+  } else {
+    schedule_type = 'cron';
+    schedule_config = { cron: document.getElementById('sr-cron').value.trim() };
+  }
+
+  const selectedTasks = [...document.getElementById('sr-tasks').selectedOptions].map(o => o.value);
+
+  const body = {
+    name, channel, recipients,
+    schedule_type, schedule_config,
+    lookback_hours: +document.getElementById('sr-lookback').value,
+    task_ids: selectedTasks.length ? selectedTasks : null,
+    enabled: true,
+  };
+
+  try {
+    await api('POST', '/reports', body);
+    toast('Reporte creado', 'success');
+    closeModal('modal-schedreport');
+    loadSchedReports();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function runSchedReport(id, name) {
+  try {
+    await api('POST', `/reports/${id}/run-now`);
+    toast(`Reporte "${name}" en proceso`, 'info');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteSchedReport(id, name) {
+  if (!confirm(`¿Eliminar el reporte "${name}"?`)) return;
+  try {
+    await api('DELETE', `/reports/${id}`);
+    toast('Reporte eliminado', 'success');
+    loadSchedReports();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+loadDashboard();
+setInterval(() => { if (currentPage === 'dashboard') loadDashboard(); }, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+services:
+  excelater:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data       # Base de datos SQLite persistente
+      - ./logs:/app/logs       # Logs de ejecución persistentes
+      - ./files:/app/files     # Carpeta opcional para archivos Excel locales
+    env_file:
+      - .env
+    restart: unless-stopped

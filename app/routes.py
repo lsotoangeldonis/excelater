@@ -1,0 +1,739 @@
+"""app/routes.py — Endpoints REST del dashboard"""
+from __future__ import annotations
+
+import asyncio
+import csv
+import io
+import json
+import logging
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.database import (
+    get_db, Task, RunLog, TaskStatus, RunStatus, ScheduleType,
+    NotificationRule, ReportSchedule, TriggerType, ChannelType,
+)
+from app.excel_engine import EngineConfig, run_update, resolve_path
+from app.scheduler import (
+    add_or_replace_job, remove_job, pause_job, resume_job,
+    execute_task, scheduler, cancel_run, add_report_job, remove_report_job,
+)
+
+router = APIRouter()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTENTICACIÓN
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def verify_api_key(
+    x_api_key: str = Header(default=""),
+    api_key: str = Query(default=""),
+):
+    """Si API_KEY está configurada, exige que coincida en header o query param."""
+    if not settings.api_key:
+        return  # Sin auth configurada
+    key = x_api_key or api_key
+    if key != settings.api_key:
+        raise HTTPException(status_code=401, detail="API key inválida o ausente")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCHEMAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ScheduleConfig(BaseModel):
+    # ONCE_DAILY
+    hour: Optional[int] = None
+    minute: Optional[int] = 0
+    # INTERVAL
+    hours: Optional[int] = None
+    minutes: Optional[int] = None
+    start_hour: Optional[int] = 0
+    start_minute: Optional[int] = 0
+    # CRON
+    cron: Optional[str] = None
+
+
+class TaskCreate(BaseModel):
+    name: str
+    description: str = ""
+    file_path: str
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    refresh_connections: bool = True
+    refresh_pivots: bool = True
+    save_on_success: bool = True
+    excel_visible: bool = False
+    max_retries: int = 0
+    retry_delay_s: int = 60
+
+
+class TaskUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    file_path: Optional[str] = None
+    schedule_type: Optional[ScheduleType] = None
+    schedule_config: Optional[ScheduleConfig] = None
+    refresh_connections: Optional[bool] = None
+    refresh_pivots: Optional[bool] = None
+    save_on_success: Optional[bool] = None
+    excel_visible: Optional[bool] = None
+    max_retries: Optional[int] = None
+    retry_delay_s: Optional[int] = None
+
+
+def _task_to_dict(task: Task) -> dict:
+    cfg = json.loads(task.schedule_config or "{}")
+    return {
+        "id": task.id,
+        "name": task.name,
+        "description": task.description,
+        "file_path": task.file_path,
+        "schedule_type": task.schedule_type,
+        "schedule_config": cfg,
+        "refresh_connections": task.refresh_connections,
+        "refresh_pivots": task.refresh_pivots,
+        "save_on_success": task.save_on_success,
+        "excel_visible": task.excel_visible,
+        "max_retries": task.max_retries,
+        "retry_delay_s": task.retry_delay_s,
+        "retry_count": task.retry_count,
+        "status": task.status,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "last_run_at": task.last_run_at,
+        "next_run_at": task.next_run_at,
+    }
+
+
+def _validate_file_path(raw_path: str) -> str:
+    """Resuelve variables de entorno y verifica que el archivo exista."""
+    resolved = resolve_path(raw_path)
+    if not Path(resolved).exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Archivo no encontrado: {resolved}. "
+                   "Verifica la ruta o que el archivo esté sincronizado.",
+        )
+    return raw_path  # Guardar la ruta original (puede tener variables de entorno)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TASKS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tasks", dependencies=[Depends(verify_api_key)])
+async def list_tasks(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Task)
+        .where(Task.deleted_at.is_(None))
+        .order_by(desc(Task.created_at))
+    )
+    tasks = result.scalars().all()
+    return [_task_to_dict(t) for t in tasks]
+
+
+@router.post("/tasks", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
+    _validate_file_path(body.file_path)
+
+    task = Task(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        file_path=body.file_path,
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        refresh_connections=body.refresh_connections,
+        refresh_pivots=body.refresh_pivots,
+        save_on_success=body.save_on_success,
+        excel_visible=body.excel_visible,
+        max_retries=body.max_retries,
+        retry_delay_s=body.retry_delay_s,
+        status=TaskStatus.ACTIVE,
+    )
+    db.add(task)
+    await db.flush()
+
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
+@router.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
+async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+    return _task_to_dict(task)
+
+
+@router.put("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
+async def update_task(task_id: str, body: TaskUpdate, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+
+    if body.file_path is not None:
+        _validate_file_path(body.file_path)
+        task.file_path = body.file_path
+    if body.name is not None:
+        task.name = body.name
+    if body.description is not None:
+        task.description = body.description
+    if body.schedule_type is not None:
+        task.schedule_type = body.schedule_type
+    if body.schedule_config is not None:
+        task.schedule_config = json.dumps(body.schedule_config.model_dump(exclude_none=True))
+    if body.refresh_connections is not None:
+        task.refresh_connections = body.refresh_connections
+    if body.refresh_pivots is not None:
+        task.refresh_pivots = body.refresh_pivots
+    if body.save_on_success is not None:
+        task.save_on_success = body.save_on_success
+    if body.excel_visible is not None:
+        task.excel_visible = body.excel_visible
+    if body.max_retries is not None:
+        task.max_retries = body.max_retries
+    if body.retry_delay_s is not None:
+        task.retry_delay_s = body.retry_delay_s
+
+    task.updated_at = datetime.now()
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
+@router.delete("/tasks/{task_id}", status_code=204, dependencies=[Depends(verify_api_key)])
+async def delete_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+    remove_job(task_id)
+    task.deleted_at = datetime.now()
+    task.status = TaskStatus.DISABLED
+    await db.commit()
+
+
+@router.post("/tasks/{task_id}/restore", dependencies=[Depends(verify_api_key)])
+async def restore_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "Tarea no encontrada")
+    if task.deleted_at is None:
+        raise HTTPException(400, "La tarea no está eliminada")
+    task.deleted_at = None
+    task.status = TaskStatus.ACTIVE
+    task.updated_at = datetime.now()
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+    await db.commit()
+    return _task_to_dict(task)
+
+
+@router.post("/tasks/{task_id}/pause", dependencies=[Depends(verify_api_key)])
+async def pause_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404)
+    task.status = TaskStatus.PAUSED
+    task.updated_at = datetime.now()
+    pause_job(task_id)
+    await db.commit()
+    return {"status": "paused"}
+
+
+@router.post("/tasks/{task_id}/resume", dependencies=[Depends(verify_api_key)])
+async def resume_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404)
+    task.status = TaskStatus.ACTIVE
+    task.updated_at = datetime.now()
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+    await db.commit()
+    return {"status": "active"}
+
+
+@router.post("/tasks/{task_id}/run-now", dependencies=[Depends(verify_api_key)])
+async def run_now(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404)
+    asyncio.create_task(execute_task(task_id))
+    return {"message": "Ejecución iniciada"}
+
+
+@router.post("/admin/cleanup-stuck-runs", dependencies=[Depends(verify_api_key)])
+async def cleanup_stuck_runs(db: AsyncSession = Depends(get_db)):
+    """Marca como 'failed' todos los RunLog que quedaron en 'running' sin estar activos en memoria."""
+    from app.scheduler import _running_tasks
+    result = await db.execute(
+        select(RunLog).where(RunLog.status == RunStatus.RUNNING)
+    )
+    stuck = [r for r in result.scalars().all() if r.id not in _running_tasks]
+    now = datetime.now()
+    for run in stuck:
+        run.status = RunStatus.FAILED
+        run.finished_at = now
+        run.error_msg = "Ejecucion interrumpida (proceso finalizado sin actualizar estado)"
+    await db.commit()
+    return {"fixed": len(stuck), "ids": [r.id for r in stuck]}
+
+
+@router.post("/logs/{run_id}/stop", dependencies=[Depends(verify_api_key)])
+async def stop_run(run_id: int, db: AsyncSession = Depends(get_db)):
+    run = await db.get(RunLog, run_id)
+    if not run:
+        raise HTTPException(404, "Ejecucion no encontrada")
+    if run.status != RunStatus.RUNNING:
+        raise HTTPException(400, "La ejecucion no esta en curso")
+    if cancel_run(run_id):
+        return {"message": "Detencion solicitada"}
+    # El proceso ya no está en memoria (ej. servidor reiniciado): regularizar directamente
+    run.status = RunStatus.FAILED
+    run.finished_at = datetime.now()
+    run.error_msg = "Ejecucion interrumpida (proceso finalizado sin actualizar estado)"
+    await db.commit()
+    return {"message": "Ejecucion regularizada"}
+
+
+@router.post("/tasks/{task_id}/dry-run", dependencies=[Depends(verify_api_key)])
+async def dry_run(task_id: str, db: AsyncSession = Depends(get_db)):
+    """Ejecuta la tarea sin guardar ni registrar en RunLog. Útil para probar configuración."""
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+
+    logger = logging.getLogger(f"dry_run.{task_id}")
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()
+    log_buffer: list[str] = []
+
+    class ListHandler(logging.Handler):
+        def emit(self, record):
+            log_buffer.append(self.format(record))
+
+    lh = ListHandler()
+    lh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(message)s", "%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(lh)
+
+    cfg = EngineConfig(
+        file_path=task.file_path,
+        refresh_connections=task.refresh_connections,
+        refresh_pivots=task.refresh_pivots,
+        save_on_success=False,  # Nunca guardar en dry-run
+        excel_visible=task.excel_visible,
+        lock_timeout=settings.lock_timeout_s,
+        lock_retry=settings.lock_retry_s,
+        refresh_timeout=settings.refresh_timeout_s,
+        refresh_check=settings.refresh_check_s,
+    )
+
+    result = await asyncio.to_thread(run_update, cfg, logger)
+    return {
+        "dry_run": True,
+        "success": result.success,
+        "duration_s": result.duration_s,
+        "connections_found": result.connections_found,
+        "pivots_ok": result.pivots_ok,
+        "pivots_err": result.pivots_err,
+        "error_msg": result.error_msg or None,
+        "log": "\n".join(log_buffer),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LOGS / HISTORIAL
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/logs", dependencies=[Depends(verify_api_key)])
+async def list_logs(
+    task_id: Optional[str] = None,
+    status: Optional[RunStatus] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(RunLog).order_by(desc(RunLog.started_at))
+    if task_id:
+        q = q.where(RunLog.task_id == task_id)
+    if status:
+        q = q.where(RunLog.status == status)
+
+    total_q = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(total_q)).scalar_one()
+
+    q = q.offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(q)).scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "task_id": r.task_id,
+                "task_name": r.task_name,
+                "status": r.status,
+                "started_at": r.started_at,
+                "finished_at": r.finished_at,
+                "duration_s": r.duration_s,
+                "log_file": r.log_file,
+                "error_msg": r.error_msg,
+                "connections": r.connections,
+                "pivots_ok": r.pivots_ok,
+                "pivots_err": r.pivots_err,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/logs", dependencies=[Depends(verify_api_key)])
+async def clear_logs(
+    task_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Elimina todos los RunLog (o solo los de una tarea) y sus archivos de log en disco."""
+    q = select(RunLog).where(RunLog.status != RunStatus.RUNNING)
+    if task_id:
+        q = q.where(RunLog.task_id == task_id)
+    rows = (await db.execute(q)).scalars().all()
+    deleted = 0
+    for r in rows:
+        if r.log_file:
+            try:
+                Path(r.log_file).unlink(missing_ok=True)
+            except Exception:
+                pass
+        await db.delete(r)
+        deleted += 1
+    await db.commit()
+    return {"deleted": deleted}
+
+
+@router.get("/logs/export", dependencies=[Depends(verify_api_key)])
+async def export_logs_csv(
+    task_id: Optional[str] = None,
+    status: Optional[RunStatus] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Exporta el historial de ejecuciones como archivo CSV."""
+    q = select(RunLog).order_by(desc(RunLog.started_at))
+    if task_id:
+        q = q.where(RunLog.task_id == task_id)
+    if status:
+        q = q.where(RunLog.status == status)
+    rows = (await db.execute(q)).scalars().all()
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "id", "task_id", "task_name", "status",
+            "started_at", "finished_at", "duration_s",
+            "error_msg", "connections", "pivots_ok", "pivots_err",
+        ])
+        for r in rows:
+            writer.writerow([
+                r.id, r.task_id, r.task_name, r.status,
+                r.started_at, r.finished_at, r.duration_s,
+                r.error_msg or "", r.connections, r.pivots_ok, r.pivots_err,
+            ])
+        yield buf.getvalue()
+
+    filename = f"excelater_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/logs/{run_id}/download", dependencies=[Depends(verify_api_key)])
+async def download_log(run_id: int, db: AsyncSession = Depends(get_db)):
+    run = await db.get(RunLog, run_id)
+    if not run or not run.log_file:
+        raise HTTPException(404, "Log no encontrado")
+    path = Path(run.log_file)
+    if not path.exists():
+        raise HTTPException(404, "Archivo de log no existe en disco")
+    return FileResponse(
+        path,
+        media_type="text/plain",
+        filename=path.name,
+    )
+
+
+@router.get("/logs/{run_id}/content", dependencies=[Depends(verify_api_key)])
+async def view_log(run_id: int, db: AsyncSession = Depends(get_db)):
+    run = await db.get(RunLog, run_id)
+    if not run or not run.log_file:
+        raise HTTPException(404)
+    path = Path(run.log_file)
+    if not path.exists():
+        return {"content": "(archivo de log no disponible)"}
+    return {"content": path.read_text(encoding="utf-8", errors="replace")}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ESTADÍSTICAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/stats", dependencies=[Depends(verify_api_key)])
+async def get_stats(db: AsyncSession = Depends(get_db)):
+    total_tasks = (await db.execute(
+        select(func.count(Task.id)).where(Task.deleted_at.is_(None))
+    )).scalar_one()
+    active_tasks = (await db.execute(
+        select(func.count(Task.id)).where(Task.status == TaskStatus.ACTIVE, Task.deleted_at.is_(None))
+    )).scalar_one()
+    total_runs = (await db.execute(select(func.count(RunLog.id)))).scalar_one()
+    success_runs = (await db.execute(
+        select(func.count(RunLog.id)).where(RunLog.status == RunStatus.SUCCESS)
+    )).scalar_one()
+    failed_runs = (await db.execute(
+        select(func.count(RunLog.id)).where(RunLog.status == RunStatus.FAILED)
+    )).scalar_one()
+    running_now = (await db.execute(
+        select(func.count(RunLog.id)).where(RunLog.status == RunStatus.RUNNING)
+    )).scalar_one()
+
+    return {
+        "total_tasks": total_tasks,
+        "active_tasks": active_tasks,
+        "paused_tasks": total_tasks - active_tasks,
+        "total_runs": total_runs,
+        "success_runs": success_runs,
+        "failed_runs": failed_runs,
+        "running_now": running_now,
+        "success_rate": round(success_runs / total_runs * 100, 1) if total_runs else 0,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NOTIFICATION RULES
+# ══════════════════════════════════════════════════════════════════════════════
+
+class NotificationRuleCreate(BaseModel):
+    trigger: TriggerType
+    channel: ChannelType
+    recipients: list  # list[str] para email, list[dict] para whatsapp
+    enabled: bool = True
+
+
+class NotificationRuleUpdate(BaseModel):
+    trigger: Optional[TriggerType] = None
+    channel: Optional[ChannelType] = None
+    recipients: Optional[list] = None
+    enabled: Optional[bool] = None
+
+
+def _rule_to_dict(r: NotificationRule) -> dict:
+    return {
+        "id": r.id,
+        "task_id": r.task_id,
+        "trigger": r.trigger,
+        "channel": r.channel,
+        "recipients": json.loads(r.recipients or "[]"),
+        "enabled": r.enabled,
+        "created_at": r.created_at,
+    }
+
+
+@router.get("/tasks/{task_id}/notifications", dependencies=[Depends(verify_api_key)])
+async def list_notification_rules(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+    result = await db.execute(
+        select(NotificationRule).where(NotificationRule.task_id == task_id)
+    )
+    return [_rule_to_dict(r) for r in result.scalars()]
+
+
+@router.post("/tasks/{task_id}/notifications", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_notification_rule(
+    task_id: str, body: NotificationRuleCreate, db: AsyncSession = Depends(get_db)
+):
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+    rule = NotificationRule(
+        task_id=task_id,
+        trigger=body.trigger,
+        channel=body.channel,
+        recipients=json.dumps(body.recipients),
+        enabled=body.enabled,
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return _rule_to_dict(rule)
+
+
+@router.put("/notifications/{rule_id}", dependencies=[Depends(verify_api_key)])
+async def update_notification_rule(
+    rule_id: int, body: NotificationRuleUpdate, db: AsyncSession = Depends(get_db)
+):
+    rule = await db.get(NotificationRule, rule_id)
+    if not rule:
+        raise HTTPException(404, "Regla no encontrada")
+    if body.trigger is not None:
+        rule.trigger = body.trigger
+    if body.channel is not None:
+        rule.channel = body.channel
+    if body.recipients is not None:
+        rule.recipients = json.dumps(body.recipients)
+    if body.enabled is not None:
+        rule.enabled = body.enabled
+    await db.commit()
+    return _rule_to_dict(rule)
+
+
+@router.delete("/notifications/{rule_id}", status_code=204, dependencies=[Depends(verify_api_key)])
+async def delete_notification_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
+    rule = await db.get(NotificationRule, rule_id)
+    if not rule:
+        raise HTTPException(404, "Regla no encontrada")
+    await db.delete(rule)
+    await db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REPORT SCHEDULES
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ReportScheduleCreate(BaseModel):
+    name: str
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    lookback_hours: int = 24
+    channel: ChannelType
+    recipients: list
+    task_ids: Optional[list[str]] = None  # None = todas las tareas
+    enabled: bool = True
+
+
+class ReportScheduleUpdate(BaseModel):
+    name: Optional[str] = None
+    schedule_type: Optional[ScheduleType] = None
+    schedule_config: Optional[ScheduleConfig] = None
+    lookback_hours: Optional[int] = None
+    channel: Optional[ChannelType] = None
+    recipients: Optional[list] = None
+    task_ids: Optional[list[str]] = None
+    enabled: Optional[bool] = None
+
+
+def _report_to_dict(s: ReportSchedule) -> dict:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "schedule_type": s.schedule_type,
+        "schedule_config": json.loads(s.schedule_config or "{}"),
+        "lookback_hours": s.lookback_hours,
+        "channel": s.channel,
+        "recipients": json.loads(s.recipients or "[]"),
+        "task_ids": json.loads(s.task_ids) if s.task_ids else None,
+        "enabled": s.enabled,
+        "created_at": s.created_at,
+    }
+
+
+@router.get("/reports", dependencies=[Depends(verify_api_key)])
+async def list_reports(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ReportSchedule).order_by(desc(ReportSchedule.created_at)))
+    return [_report_to_dict(s) for s in result.scalars()]
+
+
+@router.post("/reports", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_report(body: ReportScheduleCreate, db: AsyncSession = Depends(get_db)):
+    s = ReportSchedule(
+        name=body.name,
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        lookback_hours=body.lookback_hours,
+        channel=body.channel,
+        recipients=json.dumps(body.recipients),
+        task_ids=json.dumps(body.task_ids) if body.task_ids is not None else None,
+        enabled=body.enabled,
+    )
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    if s.enabled:
+        add_report_job(s)
+    return _report_to_dict(s)
+
+
+@router.put("/reports/{report_id}", dependencies=[Depends(verify_api_key)])
+async def update_report(
+    report_id: int, body: ReportScheduleUpdate, db: AsyncSession = Depends(get_db)
+):
+    s = await db.get(ReportSchedule, report_id)
+    if not s:
+        raise HTTPException(404, "Reporte no encontrado")
+    if body.name is not None:
+        s.name = body.name
+    if body.schedule_type is not None:
+        s.schedule_type = body.schedule_type
+    if body.schedule_config is not None:
+        s.schedule_config = json.dumps(body.schedule_config.model_dump(exclude_none=True))
+    if body.lookback_hours is not None:
+        s.lookback_hours = body.lookback_hours
+    if body.channel is not None:
+        s.channel = body.channel
+    if body.recipients is not None:
+        s.recipients = json.dumps(body.recipients)
+    if body.task_ids is not None:
+        s.task_ids = json.dumps(body.task_ids)
+    if body.enabled is not None:
+        s.enabled = body.enabled
+    await db.commit()
+    if s.enabled:
+        add_report_job(s)
+    else:
+        remove_report_job(s.id)
+    return _report_to_dict(s)
+
+
+@router.delete("/reports/{report_id}", status_code=204, dependencies=[Depends(verify_api_key)])
+async def delete_report(report_id: int, db: AsyncSession = Depends(get_db)):
+    s = await db.get(ReportSchedule, report_id)
+    if not s:
+        raise HTTPException(404, "Reporte no encontrado")
+    remove_report_job(report_id)
+    await db.delete(s)
+    await db.commit()
+
+
+@router.post("/reports/{report_id}/run-now", dependencies=[Depends(verify_api_key)])
+async def run_report_now(report_id: int, db: AsyncSession = Depends(get_db)):
+    s = await db.get(ReportSchedule, report_id)
+    if not s:
+        raise HTTPException(404, "Reporte no encontrado")
+    from app.notifications import send_report
+    asyncio.create_task(send_report(s, db))
+    return {"message": "Reporte en proceso"}
