@@ -214,6 +214,7 @@ tr:hover td { background: rgba(171,157,242,.04); }
   font-family: var(--mono); font-size: 11px;
   background: var(--bg3); border: 1px solid var(--border2);
   color: var(--cyan); padding: 3px 8px; border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* ── Modal ── */
@@ -284,6 +285,21 @@ textarea { resize: vertical; min-height: 70px; }
 .sch-panel { display: none; }
 .sch-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+/* ── Utility ── */
+.hint-mono { font-size: 12px; color: var(--text2); font-family: var(--mono); }
+.hint-text { font-size: 12px; color: var(--text2); }
+.hint-sm { font-size: 11px; color: var(--text2); margin-top: 4px; }
+.section-label { margin: 20px 0 10px; font-family: var(--mono); font-size: 12px; color: var(--text2); }
+.section-label-compact { margin-top: 16px; }
+.modal-sm { max-width: 480px; }
+.modal-md { max-width: 560px; }
+.recipients-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.rules-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.multi-select { height: 80px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px; }
+#notif-section { display: none; padding: 0 24px 16px; }
+#nr-wa-group, #sr-wa-group { display: none; }
+
+/* ── Toggle ── */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .toggle-row:last-child { border-bottom: none; }
 .toggle-info { font-size: 13px; }
@@ -452,7 +468,7 @@ select.filter-select { max-width: 160px; }
         <div class="table-header">
           <div class="table-title">Próximas ejecuciones</div>
           <div class="table-actions">
-            <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">Auto-actualiza cada 30s</span>
+            <span class="hint-mono">Auto-actualiza cada 30s</span>
           </div>
         </div>
         <table id="upcoming-table">
@@ -541,7 +557,7 @@ select.filter-select { max-width: 160px; }
         <div class="table-header">
           <div class="table-title">Archivos de log disponibles</div>
           <div class="table-actions">
-            <span style="font-size:12px;color:var(--text2)">Haz clic en <i class="fa-solid fa-download"></i> para descargar</span>
+            <span class="hint-text">Haz clic en <i class="fa-solid fa-download"></i> para descargar</span>
           </div>
         </div>
         <table>
@@ -600,7 +616,7 @@ select.filter-select { max-width: 160px; }
         </div>
       </div>
 
-      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">PROGRAMACIÓN</div>
+      <div class="section-label">PROGRAMACIÓN</div>
       <div class="schedule-builder">
         <div class="sch-tabs">
           <button class="sch-tab active" onclick="setSchTab('once','this')" id="tab-once">Una vez al día</button>
@@ -639,15 +655,15 @@ select.filter-select { max-width: 160px; }
         </div>
 
         <div class="sch-panel" id="sch-cron">
-          <div class="form-group" style="grid-column:1/-1">
+          <div class="form-group form-full">
             <label>Expresión cron (minuto hora día mes día_semana)</label>
             <input id="f-cron" type="text" placeholder="0 6 * * 1-5" value="0 6 * * *">
-            <span style="font-size:11px;color:var(--text2);margin-top:4px">Ej: <code>0 6 * * 1-5</code> = lunes a viernes a las 6:00am</span>
+            <span class="hint-sm">Ej: <code>0 6 * * 1-5</code> = lunes a viernes a las 6:00am</span>
           </div>
         </div>
       </div>
 
-      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">OPCIONES</div>
+      <div class="section-label">OPCIONES</div>
       <div>
         <div class="toggle-row">
           <div class="toggle-info">
@@ -680,9 +696,9 @@ select.filter-select { max-width: 160px; }
       </div>
     </div>
     <!-- Sección notificaciones (solo al editar) -->
-    <div id="notif-section" style="display:none;padding:0 24px 16px">
-      <div style="margin:20px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">NOTIFICACIONES</div>
-      <div id="notif-rules-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <div id="notif-section">
+      <div class="section-label">NOTIFICACIONES</div>
+      <div id="notif-rules-list" class="rules-list"></div>
       <button type="button" class="btn btn-ghost btn-sm" onclick="openAddNotifRule()"><i class="fa-solid fa-plus"></i> Agregar regla</button>
     </div>
     <div class="modal-foot">
@@ -694,7 +710,7 @@ select.filter-select { max-width: 160px; }
 
 <!-- MODAL: NUEVA REGLA DE NOTIFICACIÓN -->
 <div class="modal-overlay" id="modal-notif-rule">
-  <div class="modal" style="max-width:480px">
+  <div class="modal modal-sm">
     <div class="modal-head">
       <div class="modal-title">Regla de notificación</div>
       <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-notif-rule')"><i class="fa-solid fa-xmark"></i></button>
@@ -720,11 +736,11 @@ select.filter-select { max-width: 160px; }
         <div class="form-group form-full" id="nr-email-group">
           <label>Correos destinatarios</label>
           <input id="nr-emails" type="text" placeholder="a@empresa.com, b@empresa.com">
-          <span style="font-size:11px;color:var(--text2);margin-top:4px">Separados por coma</span>
+          <span class="hint-sm">Separados por coma</span>
         </div>
-        <div class="form-group form-full" id="nr-wa-group" style="display:none">
+        <div class="form-group form-full" id="nr-wa-group">
           <label>Destinatarios WhatsApp (CallMeBot)</label>
-          <div id="nr-wa-recipients" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+          <div id="nr-wa-recipients" class="recipients-list"></div>
           <button type="button" class="btn btn-ghost btn-sm" onclick="addWaRecipient()"><i class="fa-solid fa-plus"></i> Agregar número</button>
         </div>
       </div>
@@ -738,7 +754,7 @@ select.filter-select { max-width: 160px; }
 
 <!-- MODAL: REPORTE PROGRAMADO -->
 <div class="modal-overlay" id="modal-schedreport">
-  <div class="modal" style="max-width:560px">
+  <div class="modal modal-md">
     <div class="modal-head">
       <div class="modal-title" id="modal-schedreport-title">Nuevo reporte programado</div>
       <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-schedreport')"><i class="fa-solid fa-xmark"></i></button>
@@ -763,20 +779,20 @@ select.filter-select { max-width: 160px; }
         <div class="form-group form-full" id="sr-email-group">
           <label>Correos destinatarios</label>
           <input id="sr-emails" type="text" placeholder="a@empresa.com, b@empresa.com">
-          <span style="font-size:11px;color:var(--text2);margin-top:4px">Separados por coma</span>
+          <span class="hint-sm">Separados por coma</span>
         </div>
-        <div class="form-group form-full" id="sr-wa-group" style="display:none">
+        <div class="form-group form-full" id="sr-wa-group">
           <label>Destinatarios WhatsApp (CallMeBot)</label>
-          <div id="sr-wa-recipients" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+          <div id="sr-wa-recipients" class="recipients-list"></div>
           <button type="button" class="btn btn-ghost btn-sm" onclick="addSrWaRecipient()"><i class="fa-solid fa-plus"></i> Agregar número</button>
         </div>
         <div class="form-group form-full">
           <label>Filtrar tareas (dejar vacío = todas)</label>
-          <select id="sr-tasks" multiple style="height:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px"></select>
-          <span style="font-size:11px;color:var(--text2);margin-top:4px">Ctrl+clic para seleccionar varias</span>
+          <select id="sr-tasks" multiple class="multi-select"></select>
+          <span class="hint-sm">Ctrl+clic para seleccionar varias</span>
         </div>
       </div>
-      <div style="margin:16px 0 10px;font-family:var(--mono);font-size:12px;color:var(--text2)">PROGRAMACIÓN</div>
+      <div class="section-label section-label-compact">PROGRAMACIÓN</div>
       <div class="schedule-builder">
         <div class="sch-tabs">
           <button type="button" class="sch-tab active" onclick="setSrTab('once')" id="sr-tab-once">Una vez al día</button>
@@ -794,7 +810,7 @@ select.filter-select { max-width: 160px; }
           <div class="form-group"><label>O cada N minutos</label><input id="sr-imins" type="number" min="1" max="59" value="60"></div>
         </div>
         <div class="sch-panel" id="sr-sch-cron">
-          <div class="form-group" style="grid-column:1/-1">
+          <div class="form-group form-full">
             <label>Expresión cron</label>
             <input id="sr-cron" type="text" placeholder="0 8 * * *" value="0 8 * * *">
           </div>
@@ -1391,7 +1407,7 @@ function openAddNotifRule() {
 function updateNotifChannelUI() {
   const ch = document.getElementById('nr-channel').value;
   document.getElementById('nr-email-group').style.display = ch === 'email' ? '' : 'none';
-  document.getElementById('nr-wa-group').style.display = ch === 'whatsapp' ? '' : 'none';
+  document.getElementById('nr-wa-group').style.display = ch === 'whatsapp' ? 'flex' : 'none';
 }
 
 function addWaRecipient(containerId = 'nr-wa-recipients') {
@@ -1509,7 +1525,7 @@ async function populateSrTaskSelect(selectedIds) {
 function updateSrChannelUI() {
   const ch = document.getElementById('sr-channel').value;
   document.getElementById('sr-email-group').style.display = ch === 'email' ? '' : 'none';
-  document.getElementById('sr-wa-group').style.display = ch === 'whatsapp' ? '' : 'none';
+  document.getElementById('sr-wa-group').style.display = ch === 'whatsapp' ? 'flex' : 'none';
 }
 
 function addSrWaRecipient() { addWaRecipient('sr-wa-recipients'); }
