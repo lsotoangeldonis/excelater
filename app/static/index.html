@@ -1180,7 +1180,10 @@ function renderUpcoming(tasks) {
         ${fmtDate(t.last_run_at)}
         ${t.last_run_status ? `<br>${runStatusBadge(t.last_run_status)}` : ''}
       </td>
-      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan)">${fmtDate(t.next_run_at)}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:${t.retry_count > 0 ? 'orange' : 'var(--cyan)'}">
+        ${fmtDate(t.next_run_at)}
+        ${t.retry_count > 0 ? `<br><span style="font-size:10px"><i class="fa-solid fa-rotate-right"></i> Reintento ${t.retry_count}/${t.max_retries}</span>` : ''}
+      </td>
       <td>
         ${statusBadge(t.status)}
         ${_runningExecsByTaskId[t.id] !== undefined ? `<br><span class="badge badge-running" onclick="goToRunningLog('${t.id}')">Ejecutando</span>` : ''}
@@ -1360,7 +1363,10 @@ function _rerenderCurrentLogs() {
             ${r.pivots_err > 0 ? `<span style="color:var(--red)"> ${r.pivots_err} <i class="fa-solid fa-xmark"></i></span>` : ''}
             ${r.pivots_ok === 0 && r.pivots_err === 0 ? '—' : ''}
           </td>
-          <td>${runStatusBadge(r.status)}</td>
+          <td>
+            ${runStatusBadge(r.status)}
+            ${r.retry_attempt > 0 ? `<br><span class="badge" style="background:rgba(255,165,0,.15);color:orange;font-size:10px"><i class="fa-solid fa-rotate-right"></i> Reintento ${r.retry_attempt}</span>` : ''}
+          </td>
           <td>
             <div style="display:flex;gap:6px">
               ${r.log_file ? `<button class="btn btn-ghost btn-sm" onclick="viewLog(${r.id},'${escJs(r.task_name)}')" ><i class="fa-solid fa-eye"></i> Ver</button>` : ''}

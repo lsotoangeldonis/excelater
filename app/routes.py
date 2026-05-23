@@ -715,6 +715,7 @@ async def list_logs(
                 "connections": r.connections,
                 "pivots_ok": r.pivots_ok,
                 "pivots_err": r.pivots_err,
+                "retry_attempt": getattr(r, "retry_attempt", 0) or 0,
             }
             for r in rows
         ],

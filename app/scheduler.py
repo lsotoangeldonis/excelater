@@ -92,6 +92,7 @@ async def execute_task(task_id: str):
             task_name=task.name,
             status=RunStatus.RUNNING,
             started_at=datetime.now(),
+            retry_attempt=task.retry_count,  # 0=original, 1=primer reintento, etc.
         )
         db.add(run)
         await db.flush()
@@ -189,11 +190,6 @@ async def execute_task(task_id: str):
         task.last_run_at = finished
         task.last_run_status = (RunStatus.SUCCESS if result.success else RunStatus.FAILED).value
 
-        # Calcular próxima ejecución
-        job = scheduler.get_job(task_id)
-        if job and job.next_run_time:
-            task.next_run_at = job.next_run_time.replace(tzinfo=None)
-
         # ── Retry automático ──────────────────────────────────────────────
         if not result.success and task.max_retries > 0:
             if task.retry_count < task.max_retries:
@@ -208,15 +204,25 @@ async def execute_task(task_id: str):
                     kwargs={"task_id": task_id},
                     replace_existing=True,
                 )
+                # Próxima ejecución = momento del reintento (tiene prioridad sobre schedule regular)
+                task.next_run_at = retry_time
                 logger.warning(
                     f"Reintento {task.retry_count}/{task.max_retries} "
-                    f"programado en {delay}s."
+                    f"programado en {delay}s ({retry_time.strftime('%H:%M:%S')})."
                 )
             else:
                 task.retry_count = 0
                 logger.error("Se agotaron todos los reintentos.")
-        elif result.success:
-            task.retry_count = 0
+                # Restaurar próxima ejecución al schedule regular
+                job = scheduler.get_job(task_id)
+                if job and job.next_run_time:
+                    task.next_run_at = job.next_run_time.replace(tzinfo=None)
+        else:
+            # Éxito o sin retries: próxima ejecución = schedule regular
+            task.retry_count = 0 if result.success else task.retry_count
+            job = scheduler.get_job(task_id)
+            if job and job.next_run_time:
+                task.next_run_at = job.next_run_time.replace(tzinfo=None)
 
         await db.commit()
 
