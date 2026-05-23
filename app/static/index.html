@@ -1685,7 +1685,7 @@ async function browseFile(targetId, filterType = 'any') {
       document.getElementById(targetId).value = data.path;
     }
   } catch (e) {
-    showToast('No se pudo abrir el selector de archivos', 'error');
+    toast('No se pudo abrir el selector de archivos', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
   }
