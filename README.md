@@ -64,6 +64,36 @@ Desde el dashboard → **Tareas** → **+ Nueva**:
 >   30     8     *    *       1       → lunes 8:30am
 > ```
 
+## Tarea automática de Reposición (Access)
+
+Se agregó un endpoint especializado para crear una tarea con el flujo de Reposición:
+
+1. Actualizar cubos Excel (Maestro, SKU_SUC, Transferencias).
+2. Ejecutar macro Access: Ejecutar Elimina Cubos.
+3. Compactar y reparar la BD Access.
+4. Ejecutar importaciones guardadas.
+5. Ejecutar macro Access: Ejecutar ETL Procesos.
+
+Endpoint:
+
+POST /api/tasks/pipeline/reposicion
+
+Ejemplo de payload:
+
+{
+	"name": "Actualizacion Reposicion",
+	"description": "Actualizacion automatica de herramienta de reposicion",
+	"schedule_type": "cron",
+	"schedule_config": { "cron": "0 6 * * 1-6" },
+	"access_db": "C:/Tableros/6 DWH Access/DWH Grupo Vega.accdb",
+	"cubo_sku_suc_maestro": "C:/Tableros/5 Cubos RMS/Reposicion de Mercaderia/Cubo_SKU_SUC_Maestro.xlsm",
+	"cubo_sku_suc": "C:/Tableros/5 Cubos RMS/Reposicion de Mercaderia/Cubo_SKU_SUC.xlsm",
+	"cubo_sku_suc_transferencias": "C:/Tableros/5 Cubos RMS/Reposicion de Mercaderia/Cubo_SKU_SUC_Transferencias.xlsm",
+	"compact_before_import": true,
+	"max_retries": 1,
+	"retry_delay_s": 300
+}
+
 ## Instalar como servicio de Windows (opcional)
 
 ```bash

@@ -16,6 +16,22 @@ TASK_PAYLOAD = {
     "retry_delay_s": 60,
 }
 
+REPOSICION_PAYLOAD = {
+    "name": "Reposicion Auto",
+    "description": "Pipeline de reposicion",
+    "schedule_type": "once_daily",
+    "schedule_config": {"hour": 7, "minute": 15},
+    "access_db": __file__,
+    "cubo_sku_suc_maestro": __file__,
+    "cubo_sku_suc": __file__,
+    "cubo_sku_suc_transferencias": __file__,
+    "access_visible": False,
+    "compact_before_import": True,
+    "excel_refresh_timeout": 300,
+    "max_retries": 1,
+    "retry_delay_s": 30,
+}
+
 
 async def test_health_ok(client: AsyncClient):
     r = await client.get("/health")
@@ -133,3 +149,30 @@ async def test_logs_export_csv(client: AsyncClient):
     assert "text/csv" in r.headers["content-type"]
     # Debe contener al menos la cabecera del CSV
     assert "task_name" in r.text
+
+
+async def test_create_reposicion_pipeline_task(client: AsyncClient):
+    r = await client.post("/api/tasks/pipeline/reposicion", json=REPOSICION_PAYLOAD)
+    assert r.status_code == 201
+    data = r.json()
+    assert data["name"] == "Reposicion Auto"
+    assert data["task_type"] == "pipeline"
+    assert data["status"] == "active"
+
+    pipeline_cfg = data["pipeline_config"]
+    assert pipeline_cfg["pre_import_macros"] == ["Ejecutar Elimina Cubos"]
+    assert pipeline_cfg["saved_imports"] == [
+        "Importación: Cubo_SKU_SUC_Maestro",
+        "Importación: Cubo_SKU_SUC",
+        "Importación: Cubo_SKU_SUC_Transferencias",
+    ]
+    assert pipeline_cfg["post_import_macros"] == ["Ejecutar ETL Procesos"]
+    assert len(pipeline_cfg["excel_files"]) == 3
+
+
+async def test_create_reposicion_pipeline_task_invalid_file(client: AsyncClient):
+    payload = dict(REPOSICION_PAYLOAD)
+    payload["cubo_sku_suc"] = "C:/no/existe/cubo.xlsx"
+    r = await client.post("/api/tasks/pipeline/reposicion", json=payload)
+    assert r.status_code == 400
+    assert "archivo excel no encontrado" in r.json()["detail"].lower()

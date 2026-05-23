@@ -117,6 +117,43 @@ class PipelineTaskCreate(BaseModel):
     retry_delay_s: int = 60
 
 
+class ReposicionTaskCreate(BaseModel):
+    name: str = "Actualizacion Herramienta Reposicion"
+    description: str = "Pipeline automatico de reposicion (Access ETL)"
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    access_db: str
+    cubo_sku_suc_maestro: str
+    cubo_sku_suc: str
+    cubo_sku_suc_transferencias: str
+    access_visible: bool = False
+    compact_before_import: bool = True
+    excel_refresh_timeout: int = 300
+    max_retries: int = 0
+    retry_delay_s: int = 60
+
+
+def _build_reposicion_pipeline_cfg(body: ReposicionTaskCreate) -> dict:
+    return {
+        "excel_files": [
+            {"path": body.cubo_sku_suc_maestro, "visible": False},
+            {"path": body.cubo_sku_suc, "visible": False},
+            {"path": body.cubo_sku_suc_transferencias, "visible": False},
+        ],
+        "access_db": body.access_db,
+        "access_visible": body.access_visible,
+        "compact_before_import": body.compact_before_import,
+        "pre_import_macros": ["Ejecutar Elimina Cubos"],
+        "saved_imports": [
+            "Importación: Cubo_SKU_SUC_Maestro",
+            "Importación: Cubo_SKU_SUC",
+            "Importación: Cubo_SKU_SUC_Transferencias",
+        ],
+        "post_import_macros": ["Ejecutar ETL Procesos"],
+        "excel_refresh_timeout": body.excel_refresh_timeout,
+    }
+
+
 def _task_to_dict(task: Task) -> dict:
     cfg = json.loads(task.schedule_config or "{}")
     pipeline_cfg = json.loads(task.pipeline_config or "{}") if getattr(task, "pipeline_config", None) else {}
@@ -237,6 +274,61 @@ async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depe
         name=body.name,
         description=body.description,
         file_path=body.access_db,       # BD Access como "archivo principal"
+        task_type="pipeline",
+        pipeline_config=json.dumps(pipeline_cfg),
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        refresh_connections=False,
+        refresh_pivots=False,
+        save_on_success=False,
+        excel_visible=False,
+        max_retries=body.max_retries,
+        retry_delay_s=body.retry_delay_s,
+        status=TaskStatus.ACTIVE,
+    )
+    db.add(task)
+    await db.flush()
+
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
+@router.post("/tasks/pipeline/reposicion", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncSession = Depends(get_db)):
+    """Crea una tarea pipeline de Reposición con pasos preconfigurados de Access."""
+    from app.excel_engine import resolve_path
+
+    access_db_resolved = resolve_path(body.access_db)
+    if not Path(access_db_resolved).exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"BD Access no encontrada: {access_db_resolved}",
+        )
+
+    excel_files = [
+        body.cubo_sku_suc_maestro,
+        body.cubo_sku_suc,
+        body.cubo_sku_suc_transferencias,
+    ]
+    for ef in excel_files:
+        ep = resolve_path(ef)
+        if not Path(ep).exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archivo Excel no encontrado: {ep}",
+            )
+
+    pipeline_cfg = _build_reposicion_pipeline_cfg(body)
+
+    task = Task(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        file_path=body.access_db,
         task_type="pipeline",
         pipeline_config=json.dumps(pipeline_cfg),
         schedule_type=body.schedule_type,

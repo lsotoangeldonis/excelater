@@ -1,4 +1,5 @@
 """tests/conftest.py — Fixtures compartidas para los tests de Excelater"""
+import asyncio
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -34,12 +35,23 @@ async def client():
     """Cliente HTTP de prueba con DB en memoria y scheduler desactivado."""
     app.dependency_overrides[get_db] = override_get_db
 
-    # Asegurarse de que el scheduler no se inicie durante los tests
-    if not scheduler.running:
-        scheduler.start()
+    # Reiniciar el scheduler en el loop actual para evitar "Event loop is closed"
+    if scheduler.running:
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+    scheduler._eventloop = asyncio.get_running_loop()
+    scheduler.start()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+    if scheduler.running:
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:
+            pass
 
     app.dependency_overrides.clear()
