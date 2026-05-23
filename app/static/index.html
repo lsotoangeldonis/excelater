@@ -380,9 +380,22 @@ textarea { resize: vertical; min-height: 70px; }
 .page-btns { display: flex; gap: 6px; }
 
 /* ── Filter bar ── */
-.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .search-input { max-width: 260px; }
 select.filter-select { max-width: 160px; }
+
+/* ── Sortable headers ── */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--text); background: var(--bg2); }
+.sort-icon { font-size: 10px; color: var(--accent); margin-left: 3px; opacity: 0; transition: opacity .15s; }
+th.sort-active .sort-icon { opacity: 1; }
+
+/* ── Task count chip ── */
+.count-chip {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 12px; margin-left: 6px;
+}
 
 /* ── Toast ── */
 .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
@@ -512,17 +525,25 @@ select.filter-select { max-width: 160px; }
     <!-- PAGE: TASKS -->
     <div class="page" id="page-tasks">
       <div class="filter-bar">
-        <input class="search-input" type="text" placeholder="Buscar tareas…" oninput="filterTasks(this.value)" />
-        <select class="filter-select" onchange="filterTaskStatus(this.value)">
+        <input id="task-search" class="search-input" type="text" placeholder="Buscar tareas…" oninput="setTaskFilter('search', this.value)" />
+        <select class="filter-select" id="task-filter-status" onchange="setTaskFilter('status', this.value)">
           <option value="">Todos los estados</option>
           <option value="active">Activa</option>
           <option value="paused">Pausada</option>
           <option value="disabled">Desactivada</option>
         </select>
+        <select class="filter-select" id="task-filter-type" onchange="setTaskFilter('type', this.value)">
+          <option value="">Todos los tipos</option>
+          <option value="excel">Excel</option>
+          <option value="pipeline">Pipeline</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-task-filters" onclick="clearTaskFilters()" style="display:none">
+          <i class="fa-solid fa-xmark"></i> Limpiar
+        </button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
-          <div class="table-title">Tareas configuradas</div>
+          <div class="table-title">Tareas configuradas<span class="count-chip" id="tasks-count"></span></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-ghost btn-sm" onclick="exportTasks()" title="Exportar todas las tareas a JSON"><i class="fa-solid fa-file-export"></i> Exportar</button>
             <label class="btn btn-ghost btn-sm" style="cursor:pointer" title="Importar tareas desde JSON"><i class="fa-solid fa-file-import"></i> Importar<input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importTasks(this)"></label>
@@ -531,7 +552,15 @@ select.filter-select { max-width: 160px; }
         </div>
         <table>
           <thead>
-            <tr><th>Nombre</th><th>Archivo</th><th>Programación</th><th>Última ejecución</th><th>Opciones</th><th>Estado</th><th>Acciones</th></tr>
+            <tr>
+              <th class="sortable" id="th-name" onclick="sortTasksBy('name')">Nombre<span class="sort-icon" id="sort-name">↑</span></th>
+              <th class="sortable" id="th-file_path" onclick="sortTasksBy('file_path')">Archivo<span class="sort-icon" id="sort-file_path">↑</span></th>
+              <th>Programación</th>
+              <th class="sortable" id="th-last_run_at" onclick="sortTasksBy('last_run_at')">Última ejecución<span class="sort-icon" id="sort-last_run_at">↑</span></th>
+              <th>Opciones</th>
+              <th class="sortable" id="th-status" onclick="sortTasksBy('status')">Estado<span class="sort-icon" id="sort-status">↑</span></th>
+              <th>Acciones</th>
+            </tr>
           </thead>
           <tbody id="tasks-body">
             <tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -1057,12 +1086,16 @@ function renderUpcoming(tasks) {
 async function loadTasks() {
   try {
     allTasks = await api('GET', '/tasks');
-    renderTasks(allTasks);
+    _updateSortHeaders();
+    applyTaskFilters();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 function renderTasks(tasks) {
   const body = document.getElementById('tasks-body');
+  const total = allTasks.length;
+  const chip = document.getElementById('tasks-count');
+  if (chip) chip.textContent = tasks.length < total ? `${tasks.length} / ${total}` : `${total}`;
   if (!tasks.length) {
     body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
     return;
@@ -1093,14 +1126,82 @@ function renderTasks(tasks) {
     </tr>`).join('');
 }
 
-function filterTasks(q) {
-  const f = allTasks.filter(t => t.name.toLowerCase().includes(q.toLowerCase()) || t.file_path.toLowerCase().includes(q.toLowerCase()));
-  renderTasks(f);
+// ── Task filters & sort state ──────────────────────────
+let taskFilter = { search: '', status: '', type: '', sort: 'name', dir: 'asc' };
+
+function setTaskFilter(key, value) {
+  taskFilter[key] = value;
+  const hasFilter = taskFilter.search || taskFilter.status || taskFilter.type;
+  document.getElementById('btn-clear-task-filters').style.display = hasFilter ? '' : 'none';
+  applyTaskFilters();
 }
-function filterTaskStatus(s) {
-  const f = s ? allTasks.filter(t => t.status === s) : allTasks;
-  renderTasks(f);
+
+function clearTaskFilters() {
+  taskFilter.search = ''; taskFilter.status = ''; taskFilter.type = '';
+  document.getElementById('task-search').value = '';
+  document.getElementById('task-filter-status').value = '';
+  document.getElementById('task-filter-type').value = '';
+  document.getElementById('btn-clear-task-filters').style.display = 'none';
+  applyTaskFilters();
 }
+
+function sortTasksBy(col) {
+  if (taskFilter.sort === col) {
+    taskFilter.dir = taskFilter.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    taskFilter.sort = col;
+    taskFilter.dir = 'asc';
+  }
+  _updateSortHeaders();
+  applyTaskFilters();
+}
+
+function _updateSortHeaders() {
+  ['name', 'file_path', 'last_run_at', 'status'].forEach(col => {
+    const th = document.getElementById('th-' + col);
+    const ic = document.getElementById('sort-' + col);
+    if (!th || !ic) return;
+    if (taskFilter.sort === col) {
+      th.classList.add('sort-active');
+      ic.textContent = taskFilter.dir === 'asc' ? '↑' : '↓';
+    } else {
+      th.classList.remove('sort-active');
+      ic.textContent = '↑';
+    }
+  });
+}
+
+function applyTaskFilters() {
+  let tasks = [...allTasks];
+  if (taskFilter.search) {
+    const q = taskFilter.search.toLowerCase();
+    tasks = tasks.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      (t.file_path || '').toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q)
+    );
+  }
+  if (taskFilter.status) tasks = tasks.filter(t => t.status === taskFilter.status);
+  if (taskFilter.type)   tasks = tasks.filter(t => (t.task_type || 'excel') === taskFilter.type);
+
+  const col = taskFilter.sort;
+  const dir = taskFilter.dir === 'asc' ? 1 : -1;
+  tasks.sort((a, b) => {
+    let va = a[col] ?? '', vb = b[col] ?? '';
+    if (col === 'last_run_at') {
+      va = va ? new Date(va).getTime() : 0;
+      vb = vb ? new Date(vb).getTime() : 0;
+      return (va - vb) * dir;
+    }
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+    return va < vb ? -dir : va > vb ? dir : 0;
+  });
+  renderTasks(tasks);
+}
+
+// legacy shims (mantiene compatibilidad si alguien las llama directamente)
+function filterTasks(q)      { setTaskFilter('search', q); }
+function filterTaskStatus(s) { setTaskFilter('status', s); }
 
 function exportTasks() {
   const a = document.createElement('a');
