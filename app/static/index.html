@@ -219,6 +219,8 @@ tr:hover td { background: rgba(171,157,242,.04); }
 .badge-gray::before   { background: var(--text2); }
 .badge-purple { background: rgba(171,157,242,.12); color: var(--purple); }
 .badge-purple::before { background: var(--purple); }
+.badge-running { background: rgba(120,220,232,.12); color: var(--cyan); cursor: pointer; }
+.badge-running::before { background: var(--cyan); animation: pulse 1s infinite; }
 
 /* ── Schedule pill ── */
 .schedule-pill {
@@ -581,7 +583,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <select class="filter-select" id="log-filter-task" onchange="loadLogs(1)">
           <option value="">Todas las tareas</option>
         </select>
-        <select class="filter-select" onchange="logStatusFilter=this.value;loadLogs(1)">
+        <select id="log-filter-status" class="filter-select" onchange="logStatusFilter=this.value;loadLogs(1)">
           <option value="">Todos los estados</option>
           <option value="success">Exitosas</option>
           <option value="failed">Fallidas</option>
@@ -792,6 +794,20 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             </div>
             <label class="toggle"><input type="checkbox" id="f-access-visible"><span class="toggle-slider"></span></label>
           </div>
+        </div>
+      </div>
+
+      <!-- ── REINTENTOS ──────────────────────────────────────── -->
+      <div class="section-label">REINTENTOS AUTOMÁTICOS</div>
+      <div style="display:flex;gap:12px;">
+        <div class="form-group" style="flex:1">
+          <label>Reintentos en caso de fallo</label>
+          <input id="f-retries" type="number" min="0" max="10" value="0" placeholder="0">
+          <span class="hint-sm">0 = sin reintentos automáticos</span>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Espera entre reintentos (segundos)</label>
+          <input id="f-retry-delay" type="number" min="10" max="3600" value="60" placeholder="60">
         </div>
       </div>
 
@@ -1007,6 +1023,8 @@ let allUpcoming = [];
 let allReports = [];
 let allSchedReports = [];
 let _currentLogItems = [];
+let _runningExecsByTaskId = {};
+let _logNavTaskId = null;
 
 // ══════════════════════════════════════════════════════
 // GENERIC TABLE SORT UTILITY
@@ -1073,7 +1091,11 @@ function goPage(p) {
   currentPage = p;
   if (p === 'dashboard') loadDashboard();
   if (p === 'tasks') loadTasks();
-  if (p === 'logs') { loadLogTaskFilter(); loadLogs(1); }
+  if (p === 'logs') {
+    const statusSel = document.getElementById('log-filter-status');
+    if (statusSel) statusSel.value = logStatusFilter;
+    loadLogTaskFilter().then(() => loadLogs(1));
+  }
   if (p === 'reports') loadReports();
   if (p === 'schedreports') loadSchedReports();
 }
@@ -1106,7 +1128,13 @@ function toast(msg, type = 'info') {
 // ══════════════════════════════════════════════════════
 async function loadDashboard() {
   try {
-    const [stats, tasks] = await Promise.all([api('GET', '/stats'), api('GET', '/tasks')]);
+    const [stats, tasks, runningData] = await Promise.all([
+      api('GET', '/stats'),
+      api('GET', '/tasks'),
+      api('GET', '/logs?page=1&page_size=100&status=running').catch(() => ({ items: [] })),
+    ]);
+    _runningExecsByTaskId = {};
+    (runningData.items || []).forEach(r => { _runningExecsByTaskId[r.task_id] = r.id; });
     document.getElementById('st-active').textContent  = stats.active_tasks;
     document.getElementById('st-total').textContent   = `de ${stats.total_tasks} total`;
     document.getElementById('st-ok').textContent      = stats.success_runs;
@@ -1148,9 +1176,15 @@ function renderUpcoming(tasks) {
     <tr>
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(t.description)}</div></td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
-      <td style="font-family:var(--mono);font-size:12px">${fmtDate(t.last_run_at)}</td>
+      <td style="font-family:var(--mono);font-size:12px">
+        ${fmtDate(t.last_run_at)}
+        ${t.last_run_status ? `<br>${runStatusBadge(t.last_run_status)}` : ''}
+      </td>
       <td style="font-family:var(--mono);font-size:12px;color:var(--cyan)">${fmtDate(t.next_run_at)}</td>
-      <td>${statusBadge(t.status)}</td>
+      <td>
+        ${statusBadge(t.status)}
+        ${_runningExecsByTaskId[t.id] !== undefined ? `<br><span class="badge badge-running" onclick="goToRunningLog('${t.id}')">Ejecutando</span>` : ''}
+      </td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-play"></i> Ahora</button>
       </td>
@@ -1282,6 +1316,7 @@ async function loadLogTaskFilter() {
   const sel = document.getElementById('log-filter-task');
   sel.innerHTML = '<option value="">Todas las tareas</option>' +
     tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  if (_logNavTaskId) { sel.value = _logNavTaskId; _logNavTaskId = null; }
 }
 
 async function loadLogs(page = 1) {
@@ -1470,6 +1505,8 @@ function openNewTask() {
   document.getElementById('f-pivots').checked = true;
   document.getElementById('f-save').checked = true;
   document.getElementById('f-visible').checked = false;
+  document.getElementById('f-retries').value = 0;
+  document.getElementById('f-retry-delay').value = 60;
   document.getElementById('notif-section').style.display = 'none';
   document.getElementById('notif-rules-list').innerHTML = '';
   setTaskType('excel');
@@ -1488,6 +1525,8 @@ async function copyTask(id) {
   document.getElementById('f-pivots').checked = t.refresh_pivots;
   document.getElementById('f-save').checked = t.save_on_success;
   document.getElementById('f-visible').checked = t.excel_visible;
+  document.getElementById('f-retries').value = t.max_retries ?? 0;
+  document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
   const cfg = t.schedule_config || {};
   if (t.schedule_type === 'once_daily') {
@@ -1544,6 +1583,8 @@ async function openEditTask(id) {
     document.getElementById('f-save').checked = t.save_on_success;
     document.getElementById('f-visible').checked = t.excel_visible;
   }
+  document.getElementById('f-retries').value = t.max_retries ?? 0;
+  document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
   const cfg = t.schedule_config || {};
   if (t.schedule_type === 'once_daily') {
@@ -1615,6 +1656,8 @@ async function saveTask() {
           description: document.getElementById('f-desc').value,
           schedule_type, schedule_config,
           pipeline_config: pipelineCfg,
+          max_retries:   +document.getElementById('f-retries').value,
+          retry_delay_s: +document.getElementById('f-retry-delay').value,
         });
         toast('Pipeline actualizado', 'success');
       } else {
@@ -1624,6 +1667,8 @@ async function saveTask() {
           schedule_type, schedule_config,
           ...pipelineCfg,
           excel_files: excelLines.map(p => ({ path: p, visible: false })),
+          max_retries:   +document.getElementById('f-retries').value,
+          retry_delay_s: +document.getElementById('f-retry-delay').value,
         });
         toast('Pipeline creado', 'success');
       }
@@ -1640,6 +1685,8 @@ async function saveTask() {
         refresh_pivots:      document.getElementById('f-pivots').checked,
         save_on_success:     document.getElementById('f-save').checked,
         excel_visible:       document.getElementById('f-visible').checked,
+        max_retries:         +document.getElementById('f-retries').value,
+        retry_delay_s:       +document.getElementById('f-retry-delay').value,
       };
 
       if (editingTaskId) {
@@ -1762,6 +1809,12 @@ async function stopRun(runId) {
     toast('Detención solicitada', 'info');
     loadLogs(logsPage);
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function goToRunningLog(taskId) {
+  logStatusFilter = 'running';
+  _logNavTaskId = taskId;
+  goPage('logs');
 }
 
 // ══════════════════════════════════════════════════════

@@ -91,6 +91,7 @@ class Task(Base):
     created_at       = Column(DateTime, default=datetime.now)
     updated_at       = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     last_run_at      = Column(DateTime, nullable=True)
+    last_run_status  = Column(String, nullable=True)   # "success" | "failed" | "cancelled"
     next_run_at      = Column(DateTime, nullable=True)
     deleted_at       = Column(DateTime, nullable=True)  # Soft-delete
 
@@ -159,6 +160,7 @@ def _migrate_existing_db(conn):
         "ALTER TABLE tasks ADD COLUMN retry_count INTEGER DEFAULT 0",
         "ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'excel'",
         "ALTER TABLE tasks ADD COLUMN pipeline_config TEXT DEFAULT '{}'",
+        "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
     ]
     for sql in migrations:
         try:

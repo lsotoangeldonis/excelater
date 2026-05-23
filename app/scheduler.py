@@ -167,6 +167,10 @@ async def execute_task(task_id: str):
                 run.duration_s = round(time.time() - t0, 2)
                 run.error_msg = "Detenida manualmente"
                 await db.commit()
+                task = await db.get(Task, task_id)
+                if task:
+                    task.last_run_status = RunStatus.CANCELLED.value
+                    await db.commit()
         return
 
     finished = datetime.now()
@@ -183,6 +187,7 @@ async def execute_task(task_id: str):
 
         task = await db.get(Task, task_id)
         task.last_run_at = finished
+        task.last_run_status = (RunStatus.SUCCESS if result.success else RunStatus.FAILED).value
 
         # Calcular próxima ejecución
         job = scheduler.get_job(task_id)

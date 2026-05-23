@@ -177,6 +177,7 @@ def _task_to_dict(task: Task) -> dict:
         "created_at": task.created_at,
         "updated_at": task.updated_at,
         "last_run_at": task.last_run_at,
+        "last_run_status": getattr(task, "last_run_status", None),
         "next_run_at": task.next_run_at,
     }
 

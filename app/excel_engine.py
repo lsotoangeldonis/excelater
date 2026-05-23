@@ -324,6 +324,13 @@ class ExcelCOMUpdater:
                 res.pivots_ok, res.pivots_err = self._refresh_pivots()
 
             res.success = conn_ok and res.pivots_err == 0
+            if not res.success and not res.error_msg:
+                parts = []
+                if not conn_ok:
+                    parts.append("Error actualizando conexiones")
+                if res.pivots_err:
+                    parts.append(f"{res.pivots_err} tabla(s) dinámica(s) fallida(s)")
+                res.error_msg = "; ".join(parts)
         except Exception:
             res.error_msg = traceback.format_exc()
             self.log.error(f"Excepción:\n{res.error_msg}")
