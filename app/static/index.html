@@ -766,6 +766,10 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
               <input type="radio" name="f-task-type" value="pipeline" onchange="setTaskType('pipeline')">
               <span style="color:var(--cyan)"><i class="fa-solid fa-database" style="font-size:11px"></i> Pipeline Access ETL</span>
             </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="f-task-type" value="workflow" onchange="setTaskType('workflow')">
+              <span style="color:#e67e22"><i class="fa-solid fa-calendar-week" style="font-size:11px"></i> Workflow Semanal</span>
+            </label>
           </div>
         </div>
       </div>
@@ -860,6 +864,65 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
               <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
             </div>
             <label class="toggle"><input type="checkbox" id="f-access-visible"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECCIÓN WORKFLOW SEMANAL ──────────────────────────── -->
+      <div id="section-workflow" style="display:none">
+        <div class="section-label">TIPO DE FLUJO</div>
+        <div class="form-group form-full" style="font-family:var(--mono);font-size:12px;color:var(--text2);padding:4px 0 8px">
+          <i class="fa-solid fa-calendar-week" style="color:#e67e22"></i>&nbsp; <strong>Copia Semanal Excel</strong> — cada lunes duplica el archivo de la semana anterior, lo refresca y lo guarda con el nombre de la semana actual.
+        </div>
+        <div class="section-label">CONFIGURACIÓN</div>
+        <div class="form-group form-full">
+          <label>Carpeta base</label>
+          <div class="input-browse-wrap">
+            <input id="f-wf-folder" type="text" placeholder="C:\Users\...\OneDrive - Empresa\FileServer\2. Análisis de Ventas">
+            <button type="button" class="btn-browse" onclick="browseFolder('f-wf-folder')" title="Buscar carpeta">
+              <i class="fa-solid fa-folder-open"></i>
+            </button>
+          </div>
+          <span class="hint-sm">Carpeta donde residen los archivos semanales.</span>
+        </div>
+        <div class="form-group form-full">
+          <label>Patrones de nombre de archivo (uno por línea)</label>
+          <textarea id="f-wf-patterns" rows="3" placeholder="Analisis Ventas The Box Sem {week}.xlsx" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+          <span class="hint-sm">Usa <code>{week}</code> como placeholder del número de semana ISO. Ej: <code>Analisis Ventas The Box Sem {week}.xlsx</code></span>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="form-group" style="flex:1">
+            <label>Dígitos del número de semana</label>
+            <input id="f-wf-padding" type="number" min="1" max="3" value="2">
+            <span class="hint-sm">2 → &quot;Sem 05&quot; &nbsp;|&nbsp; 1 → &quot;Sem 5&quot;</span>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Timeout refresco (segundos)</label>
+            <input id="f-wf-timeout" type="number" min="60" max="1800" value="300">
+          </div>
+        </div>
+        <div class="section-label">OPCIONES</div>
+        <div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Refresco diario</div>
+              <div class="toggle-desc">Si activo, refresca el archivo de la semana actual también en días no-lunes. Requiere programar la tarea con frecuencia diaria.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-wf-daily-refresh"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Fallar si no existe el archivo fuente</div>
+              <div class="toggle-desc">La tarea falla cuando el archivo de la semana anterior no existe (recomendado para detectar problemas)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-wf-fail-missing" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Mostrar ventana de Excel</div>
+              <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-wf-visible"><span class="toggle-slider"></span></label>
           </div>
         </div>
       </div>
@@ -1245,7 +1308,9 @@ function renderUpcoming(tasks) {
       <td style="text-align:center">
         ${ (t.task_type || 'excel') === 'pipeline'
           ? `<span title="Pipeline Access" style="color:#9b59b6;font-size:15px"><i class="fa-solid fa-database"></i><div style="font-size:9px;margin-top:2px">Access</div></span>`
-          : `<span title="Excel" style="color:#1d6f42;font-size:15px"><i class="fa-solid fa-file-excel"></i><div style="font-size:9px;margin-top:2px">Excel</div></span>`
+          : (t.task_type || 'excel') === 'workflow'
+            ? `<span title="Workflow Semanal" style="color:#e67e22;font-size:15px"><i class="fa-solid fa-calendar-week"></i><div style="font-size:9px;margin-top:2px">Workflow</div></span>`
+            : `<span title="Excel" style="color:#1d6f42;font-size:15px"><i class="fa-solid fa-file-excel"></i><div style="font-size:9px;margin-top:2px">Excel</div></span>`
         }
       </td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
@@ -1670,6 +1735,7 @@ async function copyTask(id) {
 function setTaskType(type) {
   document.getElementById('section-excel').style.display    = (type === 'excel')    ? '' : 'none';
   document.getElementById('section-pipeline').style.display = (type === 'pipeline') ? '' : 'none';
+  document.getElementById('section-workflow').style.display = (type === 'workflow') ? '' : 'none';
   document.querySelectorAll('input[name="f-task-type"]').forEach(r => { r.checked = (r.value === type); });
 }
 
@@ -1686,6 +1752,21 @@ async function browseFile(targetId, filterType = 'any') {
     }
   } catch (e) {
     toast('No se pudo abrir el selector de archivos', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
+  }
+}
+
+async function browseFolder(targetId) {
+  const btn = document.querySelector(`button[onclick="browseFolder('${targetId}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+  try {
+    const data = await api('GET', '/browse-folder');
+    if (data && data.path) {
+      document.getElementById(targetId).value = data.path;
+    }
+  } catch (e) {
+    toast('No se pudo abrir el selector de carpetas', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
   }
@@ -1710,6 +1791,15 @@ async function openEditTask(id) {
     document.getElementById('f-post-macros').value = (pc.post_import_macros || []).join('\n');
     document.getElementById('f-compact').checked = pc.compact_before_import !== false;
     document.getElementById('f-access-visible').checked = !!pc.access_visible;
+  } else if (taskType === 'workflow') {
+    const pc = t.pipeline_config || {};
+    document.getElementById('f-wf-folder').value         = pc.folder || '';
+    document.getElementById('f-wf-patterns').value       = (pc.file_patterns || []).join('\n');
+    document.getElementById('f-wf-padding').value        = pc.week_padding ?? 2;
+    document.getElementById('f-wf-daily-refresh').checked = !!pc.daily_refresh;
+    document.getElementById('f-wf-fail-missing').checked  = pc.fail_if_source_missing !== false;
+    document.getElementById('f-wf-visible').checked       = !!pc.excel_visible;
+    document.getElementById('f-wf-timeout').value         = pc.refresh_timeout ?? 300;
   } else {
     document.getElementById('f-path').value = t.file_path;
     document.getElementById('f-conns').checked = t.refresh_connections;
@@ -1764,7 +1854,44 @@ async function saveTask() {
   }
 
   try {
-    if (taskType === 'pipeline') {
+    if (taskType === 'workflow') {
+      const folder = document.getElementById('f-wf-folder').value.trim();
+      if (!folder) { toast('La carpeta base es obligatoria', 'error'); return; }
+      const patterns = document.getElementById('f-wf-patterns').value.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!patterns.length) { toast('Al menos un patrón de nombre es obligatorio', 'error'); return; }
+      const invalidPat = patterns.find(p => !p.includes('{week}'));
+      if (invalidPat) { toast(`El patrón "${invalidPat}" no contiene {week}`, 'error'); return; }
+      const workflowCfg = {
+        folder,
+        file_patterns: patterns,
+        week_padding:          +document.getElementById('f-wf-padding').value,
+        daily_refresh:          document.getElementById('f-wf-daily-refresh').checked,
+        fail_if_source_missing: document.getElementById('f-wf-fail-missing').checked,
+        excel_visible:          document.getElementById('f-wf-visible').checked,
+        refresh_timeout:       +document.getElementById('f-wf-timeout').value,
+      };
+      if (editingTaskId) {
+        await api('PUT', `/tasks/${editingTaskId}`, {
+          name,
+          description: document.getElementById('f-desc').value,
+          schedule_type, schedule_config,
+          pipeline_config: { workflow_type: 'weekly_excel_copy', ...workflowCfg },
+          max_retries:   +document.getElementById('f-retries').value,
+          retry_delay_s: +document.getElementById('f-retry-delay').value,
+        });
+        toast('Workflow actualizado', 'success');
+      } else {
+        await api('POST', '/tasks/workflow/weekly-excel-copy', {
+          name,
+          description: document.getElementById('f-desc').value,
+          schedule_type, schedule_config,
+          ...workflowCfg,
+          max_retries:   +document.getElementById('f-retries').value,
+          retry_delay_s: +document.getElementById('f-retry-delay').value,
+        });
+        toast('Workflow creado', 'success');
+      }
+    } else if (taskType === 'pipeline') {
       const accessDb = document.getElementById('f-access-db').value.trim();
       if (!accessDb) { toast('La ruta de la BD Access es obligatoria', 'error'); return; }
 

@@ -356,6 +356,98 @@ async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncS
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# WORKFLOWS PERSONALIZADOS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class WeeklyExcelCopyTaskCreate(BaseModel):
+    name: str
+    description: str = ""
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    # Carpeta base donde residen los archivos
+    folder: str
+    # Lista de patrones de nombre con placeholder {week} (ej: "Análisis Ventas Sem {week}.xlsx")
+    file_patterns: list[str]
+    # Número de dígitos del número de semana (2 → "05", 1 → "5")
+    week_padding: int = 2
+    # Si True, refresca el archivo de la semana actual también en días no-lunes
+    daily_refresh: bool = False
+    # Si True, la tarea falla cuando el archivo fuente no existe; False → warning y continúa
+    fail_if_source_missing: bool = True
+    excel_visible: bool = False
+    refresh_timeout: int = 300
+    max_retries: int = 0
+    retry_delay_s: int = 60
+
+
+@router.post(
+    "/tasks/workflow/weekly-excel-copy",
+    status_code=201,
+    dependencies=[Depends(verify_api_key)],
+)
+async def create_weekly_excel_copy_task(
+    body: WeeklyExcelCopyTaskCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Crea una tarea de tipo workflow: copia semanal de Excel por semana ISO."""
+    from app.excel_engine import resolve_path
+
+    # Validar que la carpeta exista
+    folder_resolved = resolve_path(body.folder)
+    if not Path(folder_resolved).exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Carpeta no encontrada: {folder_resolved}",
+        )
+
+    # Validar que cada patrón contenga el placeholder {week}
+    for pattern in body.file_patterns:
+        if "{week}" not in pattern:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El patrón '{pattern}' no contiene el placeholder {{week}}.",
+            )
+
+    workflow_cfg = {
+        "workflow_type": "weekly_excel_copy",
+        "folder": body.folder,
+        "file_patterns": body.file_patterns,
+        "week_padding": body.week_padding,
+        "daily_refresh": body.daily_refresh,
+        "fail_if_source_missing": body.fail_if_source_missing,
+        "excel_visible": body.excel_visible,
+        "refresh_timeout": body.refresh_timeout,
+    }
+
+    task = Task(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        file_path=body.folder,          # Carpeta base como referencia de ruta
+        task_type="workflow",
+        pipeline_config=json.dumps(workflow_cfg),
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        refresh_connections=False,
+        refresh_pivots=False,
+        save_on_success=False,
+        excel_visible=body.excel_visible,
+        max_retries=body.max_retries,
+        retry_delay_s=body.retry_delay_s,
+        status=TaskStatus.ACTIVE,
+    )
+    db.add(task)
+    await db.flush()
+
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # EXPORT / IMPORT DE TAREAS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -929,6 +1021,48 @@ async def browse_file(filter: str = Query(default="any")):
     except Exception as exc:
         logger.error("[browse-file] Error: %s", exc)
         raise HTTPException(500, f"Error al abrir el selector: {exc}")
+
+
+@router.get("/browse-folder", dependencies=[Depends(verify_api_key)])
+async def browse_folder():
+    """Abre el diálogo de selección de carpetas de Windows y devuelve la ruta seleccionada."""
+    if sys.platform != "win32":
+        raise HTTPException(400, "El selector de carpetas solo está disponible en Windows")
+
+    ps_script = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$f = New-Object System.Windows.Forms.Form; "
+        "$f.TopMost = $true; "
+        "$f.Opacity = 0; "
+        "$f.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen; "
+        "$f.Show(); "
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+        "$d.Description = 'Seleccionar carpeta'; "
+        "$d.ShowNewFolderButton = $false; "
+        "if ($d.ShowDialog($f) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath } "
+        "$f.Dispose();"
+    )
+    ps_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                [ps_exe, "-Sta", "-NoProfile", "-Command", ps_script],
+                capture_output=True, text=True, encoding="utf-8", timeout=120,
+            ),
+        )
+        path = result.stdout.strip()
+        if not path:
+            if result.returncode != 0:
+                logger.warning("[browse-folder] PowerShell stderr: %s", result.stderr.strip())
+            return {"path": None}
+        return {"path": path}
+    except subprocess.TimeoutExpired:
+        return {"path": None}
+    except Exception as exc:
+        logger.error("[browse-folder] Error: %s", exc)
+        raise HTTPException(500, f"Error al abrir el selector de carpetas: {exc}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

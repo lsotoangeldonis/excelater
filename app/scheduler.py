@@ -132,6 +132,34 @@ async def execute_task(task_id: str):
             logger.warning("Ejecución detenida manualmente.")
         finally:
             _running_tasks.pop(run_id, None)
+    elif task_type == "workflow":
+        # ── Workflow personalizado (registry) ────────────────────────────
+        from app.workflows import registry
+        workflow_cfg = json.loads(task.pipeline_config or "{}")
+        workflow_type_name = workflow_cfg.get("workflow_type", "")
+        handler_cls = registry.get(workflow_type_name)
+        if handler_cls is None:
+            result = type(
+                "EngineResult", (),
+                {
+                    "success": False,
+                    "error_msg": f"Workflow desconocido: '{workflow_type_name}'. "
+                                 f"Disponibles: {registry.available()}",
+                    "duration_s": 0.0,
+                    "connections_found": 0,
+                    "pivots_ok": 0,
+                    "pivots_err": 0,
+                },
+            )()
+            _running_tasks.pop(run_id, None)
+        else:
+            try:
+                result = await asyncio.to_thread(handler_cls().run, workflow_cfg, logger)
+            except asyncio.CancelledError:
+                cancelled = True
+                logger.warning("Ejecución detenida manualmente.")
+            finally:
+                _running_tasks.pop(run_id, None)
     else:
         # ── Tarea Excel estándar ─────────────────────────────────────────
         stop_event = threading.Event()

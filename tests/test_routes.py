@@ -176,3 +176,69 @@ async def test_create_reposicion_pipeline_task_invalid_file(client: AsyncClient)
     r = await client.post("/api/tasks/pipeline/reposicion", json=payload)
     assert r.status_code == 400
     assert "archivo excel no encontrado" in r.json()["detail"].lower()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WORKFLOW: weekly-excel-copy
+# ══════════════════════════════════════════════════════════════════════════════
+
+import os
+
+WEEKLY_COPY_PAYLOAD = {
+    "name": "Analisis Ventas The Box",
+    "description": "Copia y refresco semanal de análisis de ventas",
+    "schedule_type": "cron",
+    "schedule_config": {"cron": "0 7 * * 1"},
+    "folder": os.path.dirname(__file__),   # carpeta de tests, siempre existe
+    "file_patterns": ["Analisis Ventas The Box Sem {week}.xlsx"],
+    "week_padding": 2,
+    "daily_refresh": False,
+    "fail_if_source_missing": True,
+    "excel_visible": False,
+    "refresh_timeout": 300,
+    "max_retries": 1,
+    "retry_delay_s": 60,
+}
+
+
+async def test_create_weekly_excel_copy_task(client: AsyncClient):
+    r = await client.post("/api/tasks/workflow/weekly-excel-copy", json=WEEKLY_COPY_PAYLOAD)
+    assert r.status_code == 201
+    data = r.json()
+    assert data["name"] == "Analisis Ventas The Box"
+    assert data["task_type"] == "workflow"
+    assert data["status"] == "active"
+
+    cfg = data["pipeline_config"]
+    assert cfg["workflow_type"] == "weekly_excel_copy"
+    assert cfg["file_patterns"] == ["Analisis Ventas The Box Sem {week}.xlsx"]
+    assert cfg["week_padding"] == 2
+    assert cfg["daily_refresh"] is False
+    assert cfg["fail_if_source_missing"] is True
+
+
+async def test_create_weekly_excel_copy_invalid_folder(client: AsyncClient):
+    payload = {**WEEKLY_COPY_PAYLOAD, "folder": "C:/carpeta/que/no/existe/jamas"}
+    r = await client.post("/api/tasks/workflow/weekly-excel-copy", json=payload)
+    assert r.status_code == 400
+    assert "carpeta no encontrada" in r.json()["detail"].lower()
+
+
+async def test_create_weekly_excel_copy_invalid_pattern(client: AsyncClient):
+    payload = {**WEEKLY_COPY_PAYLOAD, "file_patterns": ["Analisis Ventas Sin Placeholder.xlsx"]}
+    r = await client.post("/api/tasks/workflow/weekly-excel-copy", json=payload)
+    assert r.status_code == 400
+    assert "{week}" in r.json()["detail"]
+
+
+async def test_create_weekly_excel_copy_multiple_patterns(client: AsyncClient):
+    payload = {
+        **WEEKLY_COPY_PAYLOAD,
+        "file_patterns": [
+            "Analisis Ventas The Box Sem {week}.xlsx",
+            "Analisis Ventas Lima Sem {week}.xlsx",
+        ],
+    }
+    r = await client.post("/api/tasks/workflow/weekly-excel-copy", json=payload)
+    assert r.status_code == 201
+    assert len(r.json()["pipeline_config"]["file_patterns"]) == 2
