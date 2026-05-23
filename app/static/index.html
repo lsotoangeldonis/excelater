@@ -142,6 +142,17 @@ main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon { padding: 5px 8px; }
 
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.btn-spinning i { animation: spin-once 0.65s ease; }
+
+/* ── Refresh info ── */
+.refresh-info { text-align: right; line-height: 1.4; }
+.refresh-last { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+.refresh-next { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
 /* ── Pages ── */
 .page { display: none; padding: 28px; }
 .page.active { display: block; }
@@ -444,7 +455,11 @@ select.filter-select { max-width: 160px; }
         <div class="page-sub" id="page-sub">Resumen general del sistema</div>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost btn-sm" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
+        <div class="refresh-info">
+          <div class="refresh-last" id="refresh-last">—</div>
+          <div class="refresh-next" id="refresh-next">—</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-refresh" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
         <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva tarea</button>
       </div>
     </div>
@@ -478,7 +493,7 @@ select.filter-select { max-width: 160px; }
         <div class="table-header">
           <div class="table-title">Próximas ejecuciones</div>
           <div class="table-actions">
-            <span class="hint-mono">Auto-actualiza cada 30s</span>
+            <span class="hint-mono">Auto-actualiza cada 3 min</span>
           </div>
         </div>
         <table id="upcoming-table">
@@ -512,10 +527,10 @@ select.filter-select { max-width: 160px; }
         </div>
         <table>
           <thead>
-            <tr><th>Nombre</th><th>Archivo</th><th>Programación</th><th>Opciones</th><th>Estado</th><th>Acciones</th></tr>
+            <tr><th>Nombre</th><th>Archivo</th><th>Programación</th><th>Última ejecución</th><th>Opciones</th><th>Estado</th><th>Acciones</th></tr>
           </thead>
           <tbody id="tasks-body">
-            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -1045,7 +1060,7 @@ async function loadTasks() {
 function renderTasks(tasks) {
   const body = document.getElementById('tasks-body');
   if (!tasks.length) {
-    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
     return;
   }
   body.innerHTML = tasks.map(t => `
@@ -1053,6 +1068,7 @@ function renderTasks(tasks) {
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2)">${esc(t.description)}</div></td>
       <td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text2)" title="${esc(t.file_path)}">${esc(t.file_path)}</td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${fmtDate(t.last_run_at)}</td>
       <td style="font-size:12px">
         ${t.refresh_connections ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Conexiones&nbsp;' : ''}
         ${t.refresh_pivots ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Pivots' : ''}
@@ -1109,7 +1125,7 @@ async function loadLogs(page = 1) {
           <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
           <td><strong>${esc(r.task_name)}</strong></td>
           <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
-          <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
+          <td style="font-family:var(--mono);font-size:12px">${fmtDuration(r.duration_s)}</td>
           <td style="font-family:var(--mono);font-size:12px">${r.connections ?? 0}</td>
           <td style="font-family:var(--mono);font-size:12px">
             ${r.pivots_ok > 0 ? `<span style="color:var(--green)">${r.pivots_ok} <i class="fa-solid fa-check"></i></span>` : ''}
@@ -1160,7 +1176,7 @@ async function loadReports() {
         <td><strong>${esc(r.task_name)}</strong></td>
         <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
         <td>${runStatusBadge(r.status)}</td>
-        <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
+        <td style="font-family:var(--mono);font-size:12px">${fmtDuration(r.duration_s)}</td>
         <td style="font-size:12px;color:var(--red);max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.error_msg||'')}">${r.error_msg ? r.error_msg.slice(0,80) + '…' : '—'}</td>
         <td>
           <div style="display:flex;gap:6px">
@@ -1515,6 +1531,16 @@ function fmtDate(d) {
   return dt.toLocaleString('es-PE', { dateStyle:'short', timeStyle:'short' });
 }
 
+function fmtDuration(s) {
+  if (s == null) return '—';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.round(s % 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`;
+  if (m > 0) return `${m}m ${String(sec).padStart(2,'0')}s`;
+  return `${sec}s`;
+}
+
 function statusBadge(s) {
   const map = { active:'green', paused:'yellow', disabled:'gray' };
   const lbl = { active:'Activa', paused:'Pausada', disabled:'Inactiva' };
@@ -1553,14 +1579,51 @@ async function stopRun(runId) {
 }
 
 // ══════════════════════════════════════════════════════
-// REFRESH ALL
+// REFRESH ALL — auto cada 3 minutos
 // ══════════════════════════════════════════════════════
+const AUTO_REFRESH_MS = 3 * 60 * 1000;
+let _autoRefreshTimer = null;
+
+function _updateRefreshInfo() {
+  const now  = new Date();
+  const next = new Date(now.getTime() + AUTO_REFRESH_MS);
+  const fmtTime = d => d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('refresh-last').textContent =
+    'Actualizado: ' + now.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' });
+  document.getElementById('refresh-next').textContent =
+    'Próx. auto: ' + fmtTime(next);
+}
+
+function _animateRefreshBtn() {
+  const btn = document.getElementById('btn-refresh');
+  btn.classList.remove('btn-spinning');
+  void btn.offsetWidth; // reflow para reiniciar la animación
+  btn.classList.add('btn-spinning');
+  setTimeout(() => btn.classList.remove('btn-spinning'), 700);
+}
+
+function _scheduleAutoRefresh() {
+  if (_autoRefreshTimer) clearTimeout(_autoRefreshTimer);
+  _autoRefreshTimer = setTimeout(() => {
+    _animateRefreshBtn();
+    _doRefresh(true);
+  }, AUTO_REFRESH_MS);
+}
+
+function _doRefresh(silent) {
+  if (currentPage === 'dashboard')    loadDashboard();
+  else if (currentPage === 'tasks')   loadTasks();
+  else if (currentPage === 'logs')    loadLogs(logsPage);
+  else if (currentPage === 'reports') loadReports();
+  else if (currentPage === 'schedreports') loadSchedReports();
+  _updateRefreshInfo();
+  _scheduleAutoRefresh();
+  if (!silent) toast('Datos actualizados', 'info');
+}
+
 function refreshAll() {
-  if (currentPage === 'dashboard') loadDashboard();
-  if (currentPage === 'tasks') loadTasks();
-  if (currentPage === 'logs') loadLogs(logsPage);
-  if (currentPage === 'reports') loadReports();
-  toast('Datos actualizados', 'info');
+  _animateRefreshBtn();
+  _doRefresh(false);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1806,8 +1869,7 @@ async function deleteSchedReport(id, name) {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
-loadDashboard();
-setInterval(() => { if (currentPage === 'dashboard') loadDashboard(); }, 30000);
+_doRefresh(true);
 </script>
 </body>
 </html>
