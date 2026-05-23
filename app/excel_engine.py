@@ -15,9 +15,15 @@ from dataclasses import dataclass, field
 try:
     import win32com.client
     import pythoncom
+    import pywintypes
     WIN32_AVAILABLE = True
 except ImportError:
     WIN32_AVAILABLE = False
+
+# HRESULT devuelto cuando Excel está ocupado y rechaza la llamada COM
+_COM_CALL_REJECTED = -2147418111   # RPC_E_CALL_REJECTED
+_COM_RETRY_ATTEMPTS = 6
+_COM_RETRY_WAIT = 3  # segundos entre reintentos
 
 try:
     import openpyxl
@@ -272,19 +278,36 @@ class ExcelCOMUpdater:
         self.log.error("Timeout esperando conexiones.")
         return False, n
 
+    def _com_retry(self, fn, *args):
+        """Ejecuta fn(*args) reintentando si Excel rechaza la llamada (RPC_E_CALL_REJECTED)."""
+        for attempt in range(_COM_RETRY_ATTEMPTS):
+            try:
+                return fn(*args)
+            except pywintypes.com_error as e:
+                if e.hresult == _COM_CALL_REJECTED and attempt < _COM_RETRY_ATTEMPTS - 1:
+                    self.log.debug(
+                        f"COM rechazado por Excel (intento {attempt + 1}/{_COM_RETRY_ATTEMPTS}), "
+                        f"reintentando en {_COM_RETRY_WAIT}s..."
+                    )
+                    time.sleep(_COM_RETRY_WAIT)
+                else:
+                    raise
+
     def _refresh_pivots(self) -> tuple[int, int]:
         ok = err = 0
         for s in range(1, self.wb.Sheets.Count + 1):
-            sheet = self.wb.Sheets(s)
-            for p in range(1, sheet.PivotTables().Count + 1):
-                pt = sheet.PivotTables(p)
+            sheet = self._com_retry(lambda idx=s: self.wb.Sheets(idx))
+            for p in range(1, self._com_retry(lambda sh=sheet: sh.PivotTables().Count) + 1):
+                pt = self._com_retry(lambda sh=sheet, idx=p: sh.PivotTables(idx))
                 try:
-                    pt.RefreshTable()
+                    self._com_retry(lambda t=pt: t.RefreshTable())
                     ok += 1
                     self.log.info(f"  ✔ PivotTable '{pt.Name}' en '{sheet.Name}'")
                 except Exception as e:
                     err += 1
                     self.log.error(f"  ✘ PivotTable '{pt.Name}': {e}")
+                    # Pausa tras fallo de pivot para que Excel vuelva a estado estable
+                    time.sleep(2)
         return ok, err
 
     def run(self) -> EngineResult:
