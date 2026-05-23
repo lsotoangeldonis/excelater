@@ -387,8 +387,9 @@ select.filter-select { max-width: 160px; }
 /* ── Sortable headers ── */
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--text); background: var(--bg2); }
-.sort-icon { font-size: 10px; color: var(--accent); margin-left: 3px; opacity: 0; transition: opacity .15s; }
-th.sort-active .sort-icon { opacity: 1; }
+.sort-icon { font-size: 10px; margin-left: 4px; color: var(--text3); transition: color .15s; }
+th.sortable:hover .sort-icon { color: var(--text2); }
+th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
 
 /* ── Task count chip ── */
 .count-chip {
@@ -512,7 +513,12 @@ th.sort-active .sort-icon { opacity: 1; }
         <table id="upcoming-table">
           <thead>
             <tr>
-              <th>Tarea</th><th>Programación</th><th>Última ejecución</th><th>Próxima</th><th>Estado</th><th>Acciones</th>
+              <th class="sortable" data-sort="name" onclick="tableSortBy('upcoming-table','name',renderUpcomingSorted)">Tarea<span class="sort-icon">↑</span></th>
+              <th>Programación</th>
+              <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('upcoming-table','last_run_at',renderUpcomingSorted)">Última ejecución<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="next_run_at" onclick="tableSortBy('upcoming-table','next_run_at',renderUpcomingSorted)">Próxima<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="status" onclick="tableSortBy('upcoming-table','status',renderUpcomingSorted)">Estado<span class="sort-icon">↑</span></th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="upcoming-body">
@@ -550,15 +556,15 @@ th.sort-active .sort-icon { opacity: 1; }
             <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
           </div>
         </div>
-        <table>
+        <table id="tasks-table">
           <thead>
             <tr>
-              <th class="sortable" id="th-name" onclick="sortTasksBy('name')">Nombre<span class="sort-icon" id="sort-name">↑</span></th>
-              <th class="sortable" id="th-file_path" onclick="sortTasksBy('file_path')">Archivo<span class="sort-icon" id="sort-file_path">↑</span></th>
+              <th class="sortable" data-sort="name" onclick="tableSortBy('tasks-table','name',applyTaskFilters)">Nombre<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="file_path" onclick="tableSortBy('tasks-table','file_path',applyTaskFilters)">Archivo<span class="sort-icon">↑</span></th>
               <th>Programación</th>
-              <th class="sortable" id="th-last_run_at" onclick="sortTasksBy('last_run_at')">Última ejecución<span class="sort-icon" id="sort-last_run_at">↑</span></th>
+              <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('tasks-table','last_run_at',applyTaskFilters)">Última ejecución<span class="sort-icon">↑</span></th>
               <th>Opciones</th>
-              <th class="sortable" id="th-status" onclick="sortTasksBy('status')">Estado<span class="sort-icon" id="sort-status">↑</span></th>
+              <th class="sortable" data-sort="status" onclick="tableSortBy('tasks-table','status',applyTaskFilters)">Estado<span class="sort-icon">↑</span></th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -591,9 +597,17 @@ th.sort-active .sort-icon { opacity: 1; }
             </button>
           </div>
         </div>
-        <table>
+        <table id="logs-table">
           <thead>
-            <tr><th>#</th><th>Tarea</th><th>Inicio</th><th>Duración</th><th>Conexiones</th><th>Pivots</th><th>Estado</th><th>Log</th></tr>
+            <tr>
+              <th>#</th>
+              <th class="sortable" data-sort="task_name" onclick="tableSortBy('logs-table','task_name',_rerenderCurrentLogs)">Tarea<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="started_at" onclick="tableSortBy('logs-table','started_at',_rerenderCurrentLogs)">Inicio<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="duration_s" onclick="tableSortBy('logs-table','duration_s',_rerenderCurrentLogs)">Duración<span class="sort-icon">↑</span></th>
+              <th>Conexiones</th><th>Pivots</th>
+              <th class="sortable" data-sort="status" onclick="tableSortBy('logs-table','status',_rerenderCurrentLogs)">Estado<span class="sort-icon">↑</span></th>
+              <th>Log</th>
+            </tr>
           </thead>
           <tbody id="logs-body">
             <tr><td colspan="8"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -618,9 +632,16 @@ th.sort-active .sort-icon { opacity: 1; }
             <span class="hint-text">Haz clic en <i class="fa-solid fa-download"></i> para descargar</span>
           </div>
         </div>
-        <table>
+        <table id="reports-table">
           <thead>
-            <tr><th>#</th><th>Tarea</th><th>Fecha inicio</th><th>Estado</th><th>Duración</th><th>Error</th><th>Acciones</th></tr>
+            <tr>
+              <th>#</th>
+              <th class="sortable" data-sort="task_name" onclick="tableSortBy('reports-table','task_name',renderReports)">Tarea<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="started_at" onclick="tableSortBy('reports-table','started_at',renderReports)">Fecha inicio<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="status" onclick="tableSortBy('reports-table','status',renderReports)">Estado<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="duration_s" onclick="tableSortBy('reports-table','duration_s',renderReports)">Duración<span class="sort-icon">↑</span></th>
+              <th>Error</th><th>Acciones</th>
+            </tr>
           </thead>
           <tbody id="reports-body">
             <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -638,9 +659,15 @@ th.sort-active .sort-icon { opacity: 1; }
             <button class="btn btn-primary btn-sm" onclick="openNewSchedReport()"><i class="fa-solid fa-plus"></i> Nuevo reporte</button>
           </div>
         </div>
-        <table>
+        <table id="schedreports-table">
           <thead>
-            <tr><th>Nombre</th><th>Canal</th><th>Programación</th><th>Ventana</th><th>Tareas</th><th>Estado</th><th>Acciones</th></tr>
+            <tr>
+              <th class="sortable" data-sort="name" onclick="tableSortBy('schedreports-table','name',renderSchedReports)">Nombre<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="channel" onclick="tableSortBy('schedreports-table','channel',renderSchedReports)">Canal<span class="sort-icon">↑</span></th>
+              <th>Programación</th><th>Ventana</th><th>Tareas</th>
+              <th class="sortable" data-sort="enabled" onclick="tableSortBy('schedreports-table','enabled',renderSchedReports)">Estado<span class="sort-icon">↑</span></th>
+              <th>Acciones</th>
+            </tr>
           </thead>
           <tbody id="schedreports-body">
             <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -976,6 +1003,51 @@ let logsPage = 1;
 let logStatusFilter = '';
 let currentLogRunId = null;
 let allTasks = [];
+let allUpcoming = [];
+let allReports = [];
+let allSchedReports = [];
+let _currentLogItems = [];
+
+// ══════════════════════════════════════════════════════
+// GENERIC TABLE SORT UTILITY
+// ══════════════════════════════════════════════════════
+const _tableSorts = {};
+
+function tableSortBy(tableId, col, renderFn) {
+  const s = _tableSorts[tableId] || (_tableSorts[tableId] = { col, dir: 'asc' });
+  if (s.col === col) s.dir = s.dir === 'asc' ? 'desc' : 'asc';
+  else { s.col = col; s.dir = 'asc'; }
+  _updateTableSortHeaders(tableId);
+  renderFn();
+}
+
+function _updateTableSortHeaders(tableId) {
+  const s = _tableSorts[tableId];
+  if (!s) return;
+  const tbl = document.getElementById(tableId);
+  if (!tbl) return;
+  tbl.querySelectorAll('th[data-sort]').forEach(th => {
+    const col = th.dataset.sort;
+    const ic = th.querySelector('.sort-icon');
+    if (!ic) return;
+    if (s.col === col) { th.classList.add('sort-active'); ic.textContent = s.dir === 'asc' ? '↑' : '↓'; }
+    else               { th.classList.remove('sort-active'); ic.textContent = '↑'; }
+  });
+}
+
+function sortData(data, tableId) {
+  const s = _tableSorts[tableId];
+  if (!s || !s.col) return data;
+  const col = s.col, d = s.dir === 'asc' ? 1 : -1;
+  return [...data].sort((a, b) => {
+    let va = a[col] ?? '', vb = b[col] ?? '';
+    if (typeof va === 'string' && /\d{4}-\d{2}-\d{2}T/.test(va)) va = new Date(va).getTime();
+    if (typeof vb === 'string' && /\d{4}-\d{2}-\d{2}T/.test(vb)) vb = new Date(vb).getTime();
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * d;
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+    return va < vb ? -d : va > vb ? d : 0;
+  });
+}
 
 // ══════════════════════════════════════════════════════
 // NAVIGATION
@@ -1048,12 +1120,21 @@ async function loadDashboard() {
     document.getElementById('srv-label').textContent = 'Servicio activo';
 
     // Upcoming table
-    renderUpcoming(tasks);
+    allUpcoming = tasks;
+    if (!_tableSorts['upcoming-table']) {
+      _tableSorts['upcoming-table'] = { col: 'next_run_at', dir: 'asc' };
+      _updateTableSortHeaders('upcoming-table');
+    }
+    renderUpcomingSorted();
   } catch(e) {
     document.getElementById('srv-dot').style.background = 'var(--red)';
     document.getElementById('srv-label').textContent = 'Sin conexión';
     toast('Error cargando dashboard: ' + e.message, 'error');
   }
+}
+
+function renderUpcomingSorted() {
+  renderUpcoming(sortData(allUpcoming, 'upcoming-table'));
 }
 
 function renderUpcoming(tasks) {
@@ -1062,11 +1143,7 @@ function renderUpcoming(tasks) {
     body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
     return;
   }
-  const sorted = [...tasks].sort((a,b) => {
-    if (!a.next_run_at) return 1;
-    if (!b.next_run_at) return -1;
-    return new Date(a.next_run_at) - new Date(b.next_run_at);
-  });
+  const sorted = tasks;
   body.innerHTML = sorted.map(t => `
     <tr>
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(t.description)}</div></td>
@@ -1086,7 +1163,10 @@ function renderUpcoming(tasks) {
 async function loadTasks() {
   try {
     allTasks = await api('GET', '/tasks');
-    _updateSortHeaders();
+    if (!_tableSorts['tasks-table']) {
+      _tableSorts['tasks-table'] = { col: 'name', dir: 'asc' };
+      _updateTableSortHeaders('tasks-table');
+    }
     applyTaskFilters();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
@@ -1126,8 +1206,8 @@ function renderTasks(tasks) {
     </tr>`).join('');
 }
 
-// ── Task filters & sort state ──────────────────────────
-let taskFilter = { search: '', status: '', type: '', sort: 'name', dir: 'asc' };
+// ── Task filters state ─────────────────────────────────
+let taskFilter = { search: '', status: '', type: '' };
 
 function setTaskFilter(key, value) {
   taskFilter[key] = value;
@@ -1145,31 +1225,7 @@ function clearTaskFilters() {
   applyTaskFilters();
 }
 
-function sortTasksBy(col) {
-  if (taskFilter.sort === col) {
-    taskFilter.dir = taskFilter.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    taskFilter.sort = col;
-    taskFilter.dir = 'asc';
-  }
-  _updateSortHeaders();
-  applyTaskFilters();
-}
-
-function _updateSortHeaders() {
-  ['name', 'file_path', 'last_run_at', 'status'].forEach(col => {
-    const th = document.getElementById('th-' + col);
-    const ic = document.getElementById('sort-' + col);
-    if (!th || !ic) return;
-    if (taskFilter.sort === col) {
-      th.classList.add('sort-active');
-      ic.textContent = taskFilter.dir === 'asc' ? '↑' : '↓';
-    } else {
-      th.classList.remove('sort-active');
-      ic.textContent = '↑';
-    }
-  });
-}
+function sortTasksBy(col) { tableSortBy('tasks-table', col, applyTaskFilters); }
 
 function applyTaskFilters() {
   let tasks = [...allTasks];
@@ -1183,20 +1239,7 @@ function applyTaskFilters() {
   }
   if (taskFilter.status) tasks = tasks.filter(t => t.status === taskFilter.status);
   if (taskFilter.type)   tasks = tasks.filter(t => (t.task_type || 'excel') === taskFilter.type);
-
-  const col = taskFilter.sort;
-  const dir = taskFilter.dir === 'asc' ? 1 : -1;
-  tasks.sort((a, b) => {
-    let va = a[col] ?? '', vb = b[col] ?? '';
-    if (col === 'last_run_at') {
-      va = va ? new Date(va).getTime() : 0;
-      vb = vb ? new Date(vb).getTime() : 0;
-      return (va - vb) * dir;
-    }
-    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
-    return va < vb ? -dir : va > vb ? dir : 0;
-  });
-  renderTasks(tasks);
+  renderTasks(sortData(tasks, 'tasks-table'));
 }
 
 // legacy shims (mantiene compatibilidad si alguien las llama directamente)
@@ -1249,11 +1292,28 @@ async function loadLogs(page = 1) {
   if (logStatusFilter) url += `&status=${logStatusFilter}`;
   try {
     const data = await api('GET', url);
-    const body = document.getElementById('logs-body');
-    if (!data.items.length) {
-      body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><div class="empty-sub">Sin ejecuciones registradas</div></div></td></tr>`;
-    } else {
-      body.innerHTML = data.items.map(r => `
+    _currentLogItems = data.items;
+    if (!_tableSorts['logs-table']) {
+      _tableSorts['logs-table'] = { col: 'started_at', dir: 'desc' };
+      _updateTableSortHeaders('logs-table');
+    }
+    const total = data.total;
+    const pages = Math.ceil(total / 20);
+    document.getElementById('logs-info').textContent = `${total} registros — Pág. ${page}/${pages || 1}`;
+    document.getElementById('btn-prev').disabled = page <= 1;
+    document.getElementById('btn-next').disabled = page >= pages;
+    _rerenderCurrentLogs();
+  } catch(e) { toast('Error cargando logs: ' + e.message, 'error'); }
+}
+
+function _rerenderCurrentLogs() {
+  const body = document.getElementById('logs-body');
+  const items = sortData(_currentLogItems, 'logs-table');
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><div class="empty-sub">Sin ejecuciones registradas</div></div></td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(r => `
         <tr>
           <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
           <td><strong>${esc(r.task_name)}</strong></td>
@@ -1273,13 +1333,6 @@ async function loadLogs(page = 1) {
             </div>
           </td>
         </tr>`).join('');
-    }
-    const total = data.total;
-    const pages = Math.ceil(total / 20);
-    document.getElementById('logs-info').textContent = `${total} registros — Pág. ${page}/${pages || 1}`;
-    document.getElementById('btn-prev').disabled = page <= 1;
-    document.getElementById('btn-next').disabled = page >= pages;
-  } catch(e) { toast('Error cargando logs: ' + e.message, 'error'); }
 }
 
 async function clearLogs() {

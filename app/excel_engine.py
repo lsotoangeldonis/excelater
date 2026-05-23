@@ -305,7 +305,7 @@ class ExcelCOMUpdater:
                     self.log.info(f"  ✔ PivotTable '{pt.Name}' en '{sheet.Name}'")
                 except Exception as e:
                     err += 1
-                    self.log.error(f"  ✘ PivotTable '{pt.Name}': {e}")
+                    self.log.error(f"  ✘ PivotTable '{pt.Name}' en '{sheet.Name}': {e}")
                     # Pausa tras fallo de pivot para que Excel vuelva a estado estable
                     time.sleep(2)
         return ok, err
