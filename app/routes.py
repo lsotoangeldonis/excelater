@@ -894,6 +894,7 @@ async def browse_file(filter: str = Query(default="any")):
 
     file_filter = _FILTER_MAP.get(filter, _FILTER_MAP["any"])
     ps_script = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
         "Add-Type -AssemblyName System.Windows.Forms; "
         "$f = New-Object System.Windows.Forms.Form; "
         "$f.TopMost = $true; "
@@ -913,7 +914,7 @@ async def browse_file(filter: str = Query(default="any")):
             None,
             lambda: subprocess.run(
                 [ps_exe, "-Sta", "-NoProfile", "-Command", ps_script],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, encoding="utf-8", timeout=120,
             ),
         )
         path = result.stdout.strip()
