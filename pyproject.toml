@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "excel-onedrive-scheduler"
+name = "execelater"
 version = "1.0.0"
 description = "Servicio de actualización automática de archivos Excel en OneDrive/SharePoint"
 authors = ["Tu Nombre <tu@email.com>"]

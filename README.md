@@ -13,7 +13,7 @@ Excel sincronizados desde SharePoint a través de OneDrive.
 
 ```bash
 # 1. Clonar / descomprimir el proyecto
-cd excel-onedrive-scheduler
+cd Excelater
 
 # 2. Instalar dependencias con Poetry
 poetry install
@@ -26,8 +26,11 @@ cp .env.example .env
 ## Uso
 
 ```bash
+# Instalar el paquete (primera vez o tras clonar)
+poetry install
+
 # Iniciar el servidor (dashboard en http://localhost:8000)
-poetry run scheduler
+poetry run excelater
 
 # O directamente
 poetry run python -m app.main
@@ -101,16 +104,16 @@ Ejemplo de payload:
 choco install nssm
 
 # Crear servicio
-nssm install ExcelScheduler "C:\Users\TuUsuario\AppData\Local\pypoetry\venv\Scripts\python.exe" "-m app.main"
-nssm set ExcelScheduler AppDirectory "C:\ruta\al\proyecto"
-nssm start ExcelScheduler
+nssm install Excelater "C:\Users\TuUsuario\AppData\Local\pypoetry\venv\Scripts\python.exe" "-m app.main"
+nssm set Excelater AppDirectory "C:\ruta\al\proyecto"
+nssm start Excelater
 ```
 
 O usando la Task Scheduler de Windows:
 ```
 Acción: Ejecutar programa
 Programa: poetry
-Argumentos: run scheduler
+Argumentos: run excelater
 Directorio: C:\ruta\al\proyecto
 Trigger: Al iniciar sesión / Al arrancar
 ```
@@ -131,18 +134,24 @@ MAX_LOG_SIZE_MB=10
 ## Estructura del proyecto
 
 ```
-excel-onedrive-scheduler/
+Excelater/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py          # FastAPI + lifespan
-│   ├── config.py        # Settings (pydantic-settings)
-│   ├── database.py      # SQLAlchemy async + modelos
-│   ├── excel_engine.py  # Motor COM / openpyxl
-│   ├── scheduler.py     # APScheduler + lógica de triggers
-│   ├── routes.py        # Endpoints REST
+│   ├── main.py              # FastAPI + lifespan + entry point
+│   ├── config.py            # Settings (pydantic-settings)
+│   ├── database.py          # SQLAlchemy async + modelos
+│   ├── excel_engine.py      # Motor COM / openpyxl
+│   ├── access_engine.py     # Motor COM para Access (macro, compact & repair)
+│   ├── scheduler.py         # APScheduler + lógica de triggers
+│   ├── routes.py            # Endpoints REST
+│   ├── notifications.py     # Notificaciones (email / webhook)
 │   └── static/
-│       └── index.html   # Dashboard SPA
-├── logs/                # Archivos .log por ejecución
+│       └── index.html       # Dashboard SPA
+├── logs/                    # Archivos .log por ejecución
+├── tests/
+│   ├── conftest.py
+│   ├── test_routes.py
+│   └── test_scheduler.py
 ├── pyproject.toml
 ├── .env.example
 └── README.md
