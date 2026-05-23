@@ -898,24 +898,30 @@ async def browse_file(filter: str = Query(default="any")):
         "$d = New-Object System.Windows.Forms.OpenFileDialog; "
         f"$d.Filter = '{file_filter}'; "
         "$d.Title = 'Seleccionar archivo'; "
-        "[void][System.Windows.Forms.Application]::EnableVisualStyles(); "
-        "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.FileName }"
+        "$d.TopMost = $true; "
+        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }"
     )
+    # Ruta absoluta para evitar FileNotFoundError cuando el servidor no tiene powershell en PATH
+    ps_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
     try:
-        result = await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                [ps_exe, "-Sta", "-NoProfile", "-Command", ps_script],
                 capture_output=True, text=True, timeout=120,
             ),
         )
         path = result.stdout.strip()
         if not path:
+            # Puede ser cancelación del usuario o error en el script
+            if result.returncode != 0:
+                logger.warning("[browse-file] PowerShell stderr: %s", result.stderr.strip())
             return {"path": None}
         return {"path": path}
     except subprocess.TimeoutExpired:
         return {"path": None}
     except Exception as exc:
+        logger.error("[browse-file] Error: %s", exc)
         raise HTTPException(500, f"Error al abrir el selector: {exc}")
 
 
