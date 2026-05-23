@@ -516,6 +516,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
           <thead>
             <tr>
               <th class="sortable" data-sort="name" onclick="tableSortBy('upcoming-table','name',renderUpcomingSorted)">Tarea<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="task_type" onclick="tableSortBy('upcoming-table','task_type',renderUpcomingSorted)">Tipo<span class="sort-icon">↑</span></th>
               <th>Programación</th>
               <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('upcoming-table','last_run_at',renderUpcomingSorted)">Última ejecución<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="next_run_at" onclick="tableSortBy('upcoming-table','next_run_at',renderUpcomingSorted)">Próxima<span class="sort-icon">↑</span></th>
@@ -524,7 +525,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             </tr>
           </thead>
           <tbody id="upcoming-body">
-            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -1168,13 +1169,19 @@ function renderUpcomingSorted() {
 function renderUpcoming(tasks) {
   const body = document.getElementById('upcoming-body');
   if (!tasks.length) {
-    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
     return;
   }
   const sorted = tasks;
   body.innerHTML = sorted.map(t => `
     <tr>
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(t.description)}</div></td>
+      <td style="text-align:center">
+        ${ (t.task_type || 'excel') === 'pipeline'
+          ? `<span title="Pipeline Access" style="color:#9b59b6;font-size:15px"><i class="fa-solid fa-database"></i><div style="font-size:9px;margin-top:2px">Access</div></span>`
+          : `<span title="Excel" style="color:#1d6f42;font-size:15px"><i class="fa-solid fa-file-excel"></i><div style="font-size:9px;margin-top:2px">Excel</div></span>`
+        }
+      </td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
       <td style="font-family:var(--mono);font-size:12px">
         ${fmtDate(t.last_run_at)}
