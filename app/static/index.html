@@ -523,7 +523,11 @@ select.filter-select { max-width: 160px; }
       <div class="table-wrap">
         <div class="table-header">
           <div class="table-title">Tareas configuradas</div>
-          <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="exportTasks()" title="Exportar todas las tareas a JSON"><i class="fa-solid fa-file-export"></i> Exportar</button>
+            <label class="btn btn-ghost btn-sm" style="cursor:pointer" title="Importar tareas desde JSON"><i class="fa-solid fa-file-import"></i> Importar<input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importTasks(this)"></label>
+            <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
+          </div>
         </div>
         <table>
           <thead>
@@ -1096,6 +1100,34 @@ function filterTasks(q) {
 function filterTaskStatus(s) {
   const f = s ? allTasks.filter(t => t.status === s) : allTasks;
   renderTasks(f);
+}
+
+function exportTasks() {
+  const a = document.createElement('a');
+  a.href = API + '/tasks/export';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast('Descargando exportación…', 'info');
+}
+
+async function importTasks(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(API + '/tasks/import', { method: 'POST', body: fd });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
+    const data = await r.json();
+    toast(`Importadas ${data.imported} tarea(s)${data.skipped ? `, ${data.skipped} omitida(s)` : ''}.`, data.imported ? 'success' : 'info');
+    if (data.errors && data.errors.length) {
+      data.errors.forEach(e => toast(`Omitida "${e.name}": ${e.reason}`, 'error'));
+    }
+    await loadTasks();
+  } catch(e) { toast('Error importando: ' + e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════

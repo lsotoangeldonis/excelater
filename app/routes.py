@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, desc
@@ -350,6 +350,131 @@ async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncS
 
     await db.commit()
     return _task_to_dict(task)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXPORT / IMPORT DE TAREAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tasks/export", dependencies=[Depends(verify_api_key)])
+async def export_tasks(
+    ids: Optional[str] = Query(default=None, description="IDs de tarea separados por coma (vacío = todas)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exporta la configuración de tareas activas como JSON descargable.
+    Solo incluye campos de configuración; omite estado de ejecución e historial."""
+    q = select(Task).where(Task.deleted_at.is_(None))
+    if ids:
+        id_list = [i.strip() for i in ids.split(",") if i.strip()]
+        q = q.where(Task.id.in_(id_list))
+    tasks = (await db.execute(q)).scalars().all()
+
+    export_data = {
+        "version": "1",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "tasks": [
+            {
+                "name": t.name,
+                "description": t.description,
+                "file_path": t.file_path,
+                "task_type": getattr(t, "task_type", "excel") or "excel",
+                "pipeline_config": json.loads(t.pipeline_config) if getattr(t, "pipeline_config", None) else {},
+                "schedule_type": t.schedule_type,
+                "schedule_config": json.loads(t.schedule_config or "{}"),
+                "refresh_connections": t.refresh_connections,
+                "refresh_pivots": t.refresh_pivots,
+                "save_on_success": t.save_on_success,
+                "excel_visible": t.excel_visible,
+                "max_retries": t.max_retries,
+                "retry_delay_s": t.retry_delay_s,
+            }
+            for t in tasks
+        ],
+    }
+
+    filename = f"excelater_tasks_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+    content = json.dumps(export_data, ensure_ascii=False, indent=2, default=str)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/tasks/import", dependencies=[Depends(verify_api_key)])
+async def import_tasks(
+    file: UploadFile = File(...),
+    validate_paths: bool = Query(default=True, description="Verificar que los archivos existan en disco"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Importa tareas desde un JSON exportado por Excelater.
+    Cada tarea importada recibe un ID nuevo; las existentes no se modifican."""
+    try:
+        raw = await file.read()
+        data = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, f"Archivo JSON inválido: {exc}")
+
+    if not isinstance(data, dict) or "tasks" not in data:
+        raise HTTPException(400, "Formato inválido: se espera un objeto con clave 'tasks'")
+    if data.get("version", "1") != "1":
+        raise HTTPException(400, f"Versión de formato no soportada: {data.get('version')}")
+
+    created: list[dict] = []
+    skipped: list[dict] = []
+
+    for raw_task in data["tasks"]:
+        name = raw_task.get("name")
+        if not name:
+            skipped.append({"name": "(sin nombre)", "reason": "Falta el campo 'name'"})
+            continue
+
+        schedule_type = raw_task.get("schedule_type")
+        if not schedule_type:
+            skipped.append({"name": name, "reason": "Falta 'schedule_type'"})
+            continue
+
+        file_path = raw_task.get("file_path", "")
+        if validate_paths and file_path:
+            resolved = resolve_path(file_path)
+            if not Path(resolved).exists():
+                skipped.append({"name": name, "reason": f"Archivo no encontrado: {resolved}"})
+                continue
+
+        pipeline_cfg = raw_task.get("pipeline_config") or {}
+        task = Task(
+            id=str(uuid.uuid4()),
+            name=name,
+            description=raw_task.get("description", ""),
+            file_path=file_path,
+            task_type=raw_task.get("task_type", "excel"),
+            pipeline_config=json.dumps(pipeline_cfg) if pipeline_cfg else None,
+            schedule_type=schedule_type,
+            schedule_config=json.dumps(raw_task.get("schedule_config", {})),
+            refresh_connections=raw_task.get("refresh_connections", True),
+            refresh_pivots=raw_task.get("refresh_pivots", True),
+            save_on_success=raw_task.get("save_on_success", True),
+            excel_visible=raw_task.get("excel_visible", False),
+            max_retries=raw_task.get("max_retries", 0),
+            retry_delay_s=raw_task.get("retry_delay_s", 60),
+            status=TaskStatus.ACTIVE,
+        )
+        db.add(task)
+        await db.flush()
+
+        nxt = add_or_replace_job(task)
+        if nxt:
+            task.next_run_at = nxt.replace(tzinfo=None)
+
+        created.append(_task_to_dict(task))
+
+    await db.commit()
+    return {
+        "imported": len(created),
+        "skipped": len(skipped),
+        "tasks": created,
+        "errors": skipped,
+    }
 
 
 @router.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
