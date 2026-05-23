@@ -142,6 +142,24 @@ main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon { padding: 5px 8px; }
 
+/* ── Split button dropdown ── */
+.split-btn { position: relative; display: inline-flex; }
+.split-btn .btn:first-child { border-radius: 5px 0 0 5px; border-right: none; }
+.split-btn .split-caret { border-radius: 0 5px 5px 0; padding: 4px 8px; border-left: 1px solid rgba(255,97,136,.35); }
+.split-menu {
+  display: none; position: absolute; right: 0; top: calc(100% + 5px);
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 6px; z-index: 300; min-width: 180px; overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0,0,0,.45);
+}
+.split-menu.open { display: block; }
+.split-menu-item {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; background: none; border: none; cursor: pointer;
+  color: var(--text); font-size: 13px; font-family: var(--sans); text-align: left;
+}
+.split-menu-item:hover { background: rgba(171,157,242,.08); }
+
 @keyframes spin-once {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
@@ -284,6 +302,33 @@ input:focus, select:focus, textarea:focus {
 }
 select option { background: var(--bg2); }
 textarea { resize: vertical; min-height: 70px; }
+
+/* ── Input con botón browse ── */
+.input-browse-wrap { display: flex; position: relative; }
+.input-browse-wrap input {
+  border-radius: 5px 0 0 5px;
+  border-right: none;
+  flex: 1;
+  width: 0; /* fuerza que flex-grow domine */
+  min-width: 0;
+}
+.input-browse-wrap input:focus { z-index: 1; }
+.btn-browse {
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 10px;
+  transition: background .15s, color .15s, border-color .15s;
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.btn-browse:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent); }
+.btn-browse:active { background: var(--bg1); }
 
 .schedule-builder { margin-top: 8px; }
 .sch-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
@@ -520,12 +565,13 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
               <th>Programación</th>
               <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('upcoming-table','last_run_at',renderUpcomingSorted)">Última ejecución<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="next_run_at" onclick="tableSortBy('upcoming-table','next_run_at',renderUpcomingSorted)">Próxima<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="retry_count" onclick="tableSortBy('upcoming-table','retry_count',renderUpcomingSorted)">Reintentos<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="status" onclick="tableSortBy('upcoming-table','status',renderUpcomingSorted)">Estado<span class="sort-icon">↑</span></th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="upcoming-body">
-            <tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -595,9 +641,18 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="table-header">
           <div class="table-title">Historial de ejecuciones</div>
           <div class="table-actions">
-            <button class="btn btn-danger btn-sm" onclick="clearLogs()" title="Elimina todos los registros e historial del historial (no afecta ejecuciones activas)">
-              <i class="fa-solid fa-trash"></i> Limpiar historial
-            </button>
+            <div class="split-btn" id="clear-logs-split">
+              <button class="btn btn-danger btn-sm" onclick="clearLogs('all')" title="Elimina todos los registros del historial (no afecta ejecuciones activas)">
+                <i class="fa-solid fa-trash"></i> Limpiar historial
+              </button>
+              <button class="btn btn-danger btn-sm btn-icon split-caret" onclick="toggleClearMenu(event)" title="Más opciones">
+                <i class="fa-solid fa-chevron-down" style="font-size:10px"></i>
+              </button>
+              <div class="split-menu" id="clear-logs-menu">
+                <button class="split-menu-item" onclick="clearLogs('all')"><i class="fa-solid fa-trash"></i> Todo el historial</button>
+                <button class="split-menu-item" onclick="clearLogs('errors')"><i class="fa-solid fa-circle-xmark" style="color:var(--red)"></i> Solo errores</button>
+              </div>
+            </div>
           </div>
         </div>
         <table id="logs-table">
@@ -607,13 +662,14 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
               <th class="sortable" data-sort="task_name" onclick="tableSortBy('logs-table','task_name',_rerenderCurrentLogs)">Tarea<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="started_at" onclick="tableSortBy('logs-table','started_at',_rerenderCurrentLogs)">Inicio<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="duration_s" onclick="tableSortBy('logs-table','duration_s',_rerenderCurrentLogs)">Duración<span class="sort-icon">↑</span></th>
+              <th class="sortable" data-sort="retry_attempt" onclick="tableSortBy('logs-table','retry_attempt',_rerenderCurrentLogs)">Reintentos<span class="sort-icon">↑</span></th>
               <th>Conexiones</th><th>Pivots</th>
               <th class="sortable" data-sort="status" onclick="tableSortBy('logs-table','status',_rerenderCurrentLogs)">Estado<span class="sort-icon">↑</span></th>
               <th>Log</th>
             </tr>
           </thead>
           <tbody id="logs-body">
-            <tr><td colspan="8"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="9"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
         <div class="pagination">
@@ -718,7 +774,12 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
       <div id="section-excel">
         <div class="form-group form-full">
           <label>Ruta del archivo Excel</label>
-          <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
+          <div class="input-browse-wrap">
+            <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
+            <button type="button" class="btn-browse" onclick="browseFile('f-path','excel')" title="Buscar archivo">
+              <i class="fa-solid fa-folder-open"></i>
+            </button>
+          </div>
         </div>
         <div class="section-label">OPCIONES EXCEL</div>
         <div>
@@ -758,7 +819,12 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="section-label">BASE DE DATOS ACCESS</div>
         <div class="form-group form-full">
           <label>Ruta de la BD Access (.accdb)</label>
-          <input id="f-access-db" type="text" placeholder="C:\Tableros\6 DWH Access\DWH Grupo Vega.accdb">
+          <div class="input-browse-wrap">
+            <input id="f-access-db" type="text" placeholder="C:\Tableros\6 DWH Access\DWH Grupo Vega.accdb">
+            <button type="button" class="btn-browse" onclick="browseFile('f-access-db','access')" title="Buscar archivo">
+              <i class="fa-solid fa-folder-open"></i>
+            </button>
+          </div>
         </div>
         <div class="section-label">ARCHIVOS EXCEL A REFRESCAR (uno por línea)</div>
         <div class="form-group form-full">
@@ -1169,7 +1235,7 @@ function renderUpcomingSorted() {
 function renderUpcoming(tasks) {
   const body = document.getElementById('upcoming-body');
   if (!tasks.length) {
-    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
     return;
   }
   const sorted = tasks;
@@ -1187,9 +1253,12 @@ function renderUpcoming(tasks) {
         ${fmtDate(t.last_run_at)}
         ${t.last_run_status ? `<br>${runStatusBadge(t.last_run_status)}` : ''}
       </td>
-      <td style="font-family:var(--mono);font-size:12px;color:${t.retry_count > 0 ? 'orange' : 'var(--cyan)'}">
-        ${fmtDate(t.next_run_at)}
-        ${t.retry_count > 0 ? `<br><span style="font-size:10px"><i class="fa-solid fa-rotate-right"></i> Reintento ${t.retry_count}/${t.max_retries}</span>` : ''}
+      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan)">${fmtDate(t.next_run_at)}</td>
+      <td style="text-align:center">
+        ${t.retry_count > 0
+          ? `<span style="color:orange;font-family:var(--mono);font-size:12px"><i class="fa-solid fa-rotate-right"></i> ${t.retry_count}/${t.max_retries}</span>`
+          : `<span style="color:var(--text3);font-family:var(--mono);font-size:12px">—</span>`
+        }
       </td>
       <td>
         ${statusBadge(t.status)}
@@ -1364,6 +1433,12 @@ function _rerenderCurrentLogs() {
           <td><strong>${esc(r.task_name)}</strong></td>
           <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
           <td style="font-family:var(--mono);font-size:12px">${fmtDuration(r.duration_s)}</td>
+          <td style="text-align:center">
+            ${r.retry_attempt > 0
+              ? `<span style="color:orange;font-family:var(--mono);font-size:12px"><i class="fa-solid fa-rotate-right"></i> ${r.retry_attempt}</span>`
+              : `<span style="color:var(--text3);font-family:var(--mono);font-size:12px">—</span>`
+            }
+          </td>
           <td style="font-family:var(--mono);font-size:12px">${r.connections ?? 0}</td>
           <td style="font-family:var(--mono);font-size:12px">
             ${r.pivots_ok > 0 ? `<span style="color:var(--green)">${r.pivots_ok} <i class="fa-solid fa-check"></i></span>` : ''}
@@ -1372,7 +1447,6 @@ function _rerenderCurrentLogs() {
           </td>
           <td>
             ${runStatusBadge(r.status)}
-            ${r.retry_attempt > 0 ? `<br><span class="badge" style="background:rgba(255,165,0,.15);color:orange;font-size:10px"><i class="fa-solid fa-rotate-right"></i> Reintento ${r.retry_attempt}</span>` : ''}
           </td>
           <td>
             <div style="display:flex;gap:6px">
@@ -1383,28 +1457,58 @@ function _rerenderCurrentLogs() {
         </tr>`).join('');
 }
 
-async function clearLogs() {
+async function clearLogs(mode = 'all') {
+  document.getElementById('clear-logs-menu')?.classList.remove('open');
   const taskId = document.getElementById('log-filter-task').value;
-  const scope = taskId ? 'las ejecuciones de esta tarea' : 'TODO el historial de ejecuciones';
+  let scope;
+  if (mode === 'errors') {
+    scope = taskId ? 'las ejecuciones fallidas de esta tarea' : 'todas las ejecuciones fallidas';
+  } else {
+    scope = taskId ? 'las ejecuciones de esta tarea' : 'TODO el historial de ejecuciones';
+  }
   if (!confirm(`¿Seguro que deseas eliminar ${scope}?\nEsta acción no se puede deshacer.`)) return;
   try {
-    const url = taskId ? `/logs?task_id=${taskId}` : '/logs';
+    let url = mode === 'errors' ? '/logs?status=failed' : '/logs';
+    if (taskId) url += (url.includes('?') ? '&' : '?') + `task_id=${taskId}`;
     const data = await api('DELETE', url);
     toast(`${data.deleted} registros eliminados`, 'success');
     loadLogs(1);
   } catch(e) { toast('Error al limpiar historial: ' + e.message, 'error'); }
 }
 
+function toggleClearMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('clear-logs-menu');
+  menu.classList.toggle('open');
+  if (menu.classList.contains('open')) {
+    setTimeout(() => document.addEventListener('click', closeClearMenu, { once: true }), 0);
+  }
+}
+
+function closeClearMenu() {
+  document.getElementById('clear-logs-menu')?.classList.remove('open');
+}
+
 async function loadReports() {
   try {
     const data = await api('GET', '/logs?page=1&page_size=100');
-    const body = document.getElementById('reports-body');
-    const withLogs = data.items.filter(r => r.log_file);
-    if (!withLogs.length) {
-      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin archivos de log disponibles</div></div></td></tr>`;
-      return;
+    allReports = data.items.filter(r => r.log_file);
+    if (!_tableSorts['reports-table']) {
+      _tableSorts['reports-table'] = { col: 'started_at', dir: 'desc' };
+      _updateTableSortHeaders('reports-table');
     }
-    body.innerHTML = withLogs.map(r => `
+    renderReports();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function renderReports() {
+  const body = document.getElementById('reports-body');
+  const items = sortData(allReports, 'reports-table');
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin archivos de log disponibles</div></div></td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(r => `
       <tr>
         <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
         <td><strong>${esc(r.task_name)}</strong></td>
@@ -1419,7 +1523,6 @@ async function loadReports() {
           </div>
         </td>
       </tr>`).join('');
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1568,6 +1671,24 @@ function setTaskType(type) {
   document.getElementById('section-excel').style.display    = (type === 'excel')    ? '' : 'none';
   document.getElementById('section-pipeline').style.display = (type === 'pipeline') ? '' : 'none';
   document.querySelectorAll('input[name="f-task-type"]').forEach(r => { r.checked = (r.value === type); });
+}
+
+// ══════════════════════════════════════════════════════
+// BROWSE FILE (selector nativo de Windows)
+// ══════════════════════════════════════════════════════
+async function browseFile(targetId, filterType = 'any') {
+  const btn = document.querySelector(`button[onclick="browseFile('${targetId}','${filterType}')"]`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+  try {
+    const data = await api('GET', `/browse-file?filter=${filterType}`);
+    if (data && data.path) {
+      document.getElementById(targetId).value = data.path;
+    }
+  } catch (e) {
+    showToast('No se pudo abrir el selector de archivos', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
+  }
 }
 
 async function openEditTask(id) {
@@ -1979,17 +2100,24 @@ let currentSrTab = 'once';
 
 async function loadSchedReports() {
   try {
-    const reports = await api('GET', '/reports');
-    const body = document.getElementById('schedreports-body');
-    if (!reports.length) {
-      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin reportes programados. Crea uno con "Nuevo reporte".</div></div></td></tr>`;
-      return;
+    allSchedReports = await api('GET', '/reports');
+    if (!_tableSorts['schedreports-table']) {
+      _tableSorts['schedreports-table'] = { col: 'name', dir: 'asc' };
+      _updateTableSortHeaders('schedreports-table');
     }
-    body.innerHTML = reports.map(r => {
+    renderSchedReports();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function renderSchedReports() {
+  const body = document.getElementById('schedreports-body');
+  const reports = sortData(allSchedReports, 'schedreports-table');
+  if (!reports.length) {
+    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin reportes programados. Crea uno con "Nuevo reporte".</div></div></td></tr>`;
+    return;
+  }
+  body.innerHTML = reports.map(r => {
       const chIcon = r.channel === 'email' ? '📧' : '💬';
-      const recip = r.channel === 'email'
-        ? (r.recipients || []).join(', ')
-        : (r.recipients || []).map(x => `+${x.phone}`).join(', ');
       const taskLabel = r.task_ids ? `${r.task_ids.length} tarea(s)` : 'Todas';
       return `<tr>
         <td><strong>${esc(r.name)}</strong></td>
@@ -2006,7 +2134,6 @@ async function loadSchedReports() {
         </td>
       </tr>`;
     }).join('');
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function openNewSchedReport() {

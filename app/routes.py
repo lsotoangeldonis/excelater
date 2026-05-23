@@ -6,6 +6,8 @@ import csv
 import io
 import json
 import logging
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -725,12 +727,15 @@ async def list_logs(
 @router.delete("/logs", dependencies=[Depends(verify_api_key)])
 async def clear_logs(
     task_id: Optional[str] = None,
+    status: Optional[RunStatus] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Elimina todos los RunLog (o solo los de una tarea) y sus archivos de log en disco."""
+    """Elimina todos los RunLog (o solo los de una tarea/estado) y sus archivos de log en disco."""
     q = select(RunLog).where(RunLog.status != RunStatus.RUNNING)
     if task_id:
         q = q.where(RunLog.task_id == task_id)
+    if status:
+        q = q.where(RunLog.status == status)
     rows = (await db.execute(q)).scalars().all()
     deleted = 0
     for r in rows:
@@ -867,6 +872,51 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         "running_now": running_now,
         "success_rate": round(success_runs / total_runs * 100, 1) if total_runs else 0,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FILE BROWSER (selector nativo de Windows)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_FILTER_MAP = {
+    "excel":  "Archivos Excel (*.xlsx;*.xlsm;*.xls)|*.xlsx;*.xlsm;*.xls|Todos los archivos (*.*)|*.*",
+    "access": "Bases de datos Access (*.accdb;*.mdb)|*.accdb;*.mdb|Todos los archivos (*.*)|*.*",
+    "any":    "Todos los archivos (*.*)|*.*",
+}
+
+
+@router.get("/browse-file", dependencies=[Depends(verify_api_key)])
+async def browse_file(filter: str = Query(default="any")):
+    """Abre el diálogo de apertura de archivos de Windows y devuelve la ruta seleccionada.
+    Solo funciona cuando el servidor corre en Windows en la misma máquina que el usuario."""
+    if sys.platform != "win32":
+        raise HTTPException(400, "El selector de archivos solo está disponible en Windows")
+
+    file_filter = _FILTER_MAP.get(filter, _FILTER_MAP["any"])
+    ps_script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$d = New-Object System.Windows.Forms.OpenFileDialog; "
+        f"$d.Filter = '{file_filter}'; "
+        "$d.Title = 'Seleccionar archivo'; "
+        "[void][System.Windows.Forms.Application]::EnableVisualStyles(); "
+        "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.FileName }"
+    )
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                capture_output=True, text=True, timeout=120,
+            ),
+        )
+        path = result.stdout.strip()
+        if not path:
+            return {"path": None}
+        return {"path": path}
+    except subprocess.TimeoutExpired:
+        return {"path": None}
+    except Exception as exc:
+        raise HTTPException(500, f"Error al abrir el selector: {exc}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
