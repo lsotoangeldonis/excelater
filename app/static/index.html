@@ -343,6 +343,16 @@ textarea { resize: vertical; min-height: 70px; }
 .log-line-warn  { color: var(--yellow); }
 .log-line-info  { color: var(--text); }
 .log-line-debug { color: var(--text3); }
+.log-live-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,97,136,.15); color: var(--red);
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px; letter-spacing: .08em;
+}
+.log-live-badge .live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--red);
+  animation: pulse 1s infinite;
+}
 
 /* ── Empty state ── */
 .empty {
@@ -610,9 +620,103 @@ select.filter-select { max-width: 160px; }
           <label>Descripción</label>
           <input id="f-desc" type="text" placeholder="Descripción opcional">
         </div>
+        <!-- Tipo de tarea -->
+        <div class="form-group form-full">
+          <label>Tipo de tarea</label>
+          <div style="display:flex;gap:16px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="f-task-type" value="excel" checked onchange="setTaskType('excel')">
+              <span>Excel (un archivo)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="f-task-type" value="pipeline" onchange="setTaskType('pipeline')">
+              <span style="color:var(--cyan)"><i class="fa-solid fa-database" style="font-size:11px"></i> Pipeline Access ETL</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECCIÓN EXCEL ─────────────────────────────────────── -->
+      <div id="section-excel">
         <div class="form-group form-full">
           <label>Ruta del archivo Excel</label>
           <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
+        </div>
+        <div class="section-label">OPCIONES EXCEL</div>
+        <div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Actualizar conexiones externas</div>
+              <div class="toggle-desc">Refresca datos de Power Query, SQL, etc.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-conns" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Refrescar tablas dinámicas</div>
+              <div class="toggle-desc">Actualiza todos los PivotTables del libro</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-pivots" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Guardar al finalizar</div>
+              <div class="toggle-desc">Guarda el archivo si la actualización fue exitosa</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-save" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Mostrar ventana de Excel</div>
+              <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-visible"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECCIÓN PIPELINE ACCESS ETL ──────────────────────── -->
+      <div id="section-pipeline" style="display:none">
+        <div class="section-label">BASE DE DATOS ACCESS</div>
+        <div class="form-group form-full">
+          <label>Ruta de la BD Access (.accdb)</label>
+          <input id="f-access-db" type="text" placeholder="C:\Tableros\6 DWH Access\DWH Grupo Vega.accdb">
+        </div>
+        <div class="section-label">ARCHIVOS EXCEL A REFRESCAR (uno por línea)</div>
+        <div class="form-group form-full">
+          <label>Rutas de archivos Excel</label>
+          <textarea id="f-excel-files" rows="4" placeholder="C:\...\Cubo_SKU_SUC_Maestro.xlsm&#10;C:\...\Cubo_SKU_SUC.xlsm&#10;C:\...\Cubo_SKU_SUC_Transferencias.xlsm" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+          <span class="hint-sm">Se actualizarán en el orden indicado antes de la importación Access.</span>
+        </div>
+        <div class="section-label">MACROS PRE-IMPORTACIÓN (uno por línea)</div>
+        <div class="form-group form-full">
+          <textarea id="f-pre-macros" rows="2" placeholder="Ejecutar Elimina Cubos" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div class="section-label">IMPORTACIONES GUARDADAS (una por línea)</div>
+        <div class="form-group form-full">
+          <textarea id="f-saved-imports" rows="4" placeholder="Importación: Cubo_SKU_SUC_Maestro&#10;Importación: Cubo_SKU_SUC&#10;Importación: Cubo_SKU_SUC_Transferencias" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+          <span class="hint-sm">Nombres exactos de las importaciones guardadas en Access (Datos externos → Importaciones guardadas).</span>
+        </div>
+        <div class="section-label">MACROS POST-IMPORTACIÓN (una por línea)</div>
+        <div class="form-group form-full">
+          <textarea id="f-post-macros" rows="2" placeholder="Ejecutar ETL Procesos sin Top Venta Categoría" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div class="section-label">OPCIONES PIPELINE</div>
+        <div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Compactar BD antes de importar</div>
+              <div class="toggle-desc">Ejecuta Compact &amp; Repair en la BD Access</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-compact" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Mostrar ventana de Access</div>
+              <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-access-visible"><span class="toggle-slider"></span></label>
+          </div>
         </div>
       </div>
 
@@ -660,38 +764,6 @@ select.filter-select { max-width: 160px; }
             <input id="f-cron" type="text" placeholder="0 6 * * 1-5" value="0 6 * * *">
             <span class="hint-sm">Ej: <code>0 6 * * 1-5</code> = lunes a viernes a las 6:00am</span>
           </div>
-        </div>
-      </div>
-
-      <div class="section-label">OPCIONES</div>
-      <div>
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div>Actualizar conexiones externas</div>
-            <div class="toggle-desc">Refresca datos de Power Query, SQL, etc.</div>
-          </div>
-          <label class="toggle"><input type="checkbox" id="f-conns" checked><span class="toggle-slider"></span></label>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div>Refrescar tablas dinámicas</div>
-            <div class="toggle-desc">Actualiza todos los PivotTables del libro</div>
-          </div>
-          <label class="toggle"><input type="checkbox" id="f-pivots" checked><span class="toggle-slider"></span></label>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div>Guardar al finalizar</div>
-            <div class="toggle-desc">Guarda el archivo si la actualización fue exitosa</div>
-          </div>
-          <label class="toggle"><input type="checkbox" id="f-save" checked><span class="toggle-slider"></span></label>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <div>Mostrar ventana de Excel</div>
-            <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
-          </div>
-          <label class="toggle"><input type="checkbox" id="f-visible"><span class="toggle-slider"></span></label>
         </div>
       </div>
     </div>
@@ -828,7 +900,10 @@ select.filter-select { max-width: 160px; }
 <div class="modal-overlay" id="modal-log">
   <div class="modal log-modal">
     <div class="modal-head">
-      <div class="modal-title" id="modal-log-title">Log de ejecución</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="modal-title" id="modal-log-title">Log de ejecución</div>
+        <span class="log-live-badge" id="log-live-badge" style="display:none"><span class="live-dot"></span>EN VIVO</span>
+      </div>
       <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-log')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="modal-body">
@@ -986,13 +1061,13 @@ function renderTasks(tasks) {
       <td>${statusBadge(t.status)}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i></button>
-          <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i></button>
-          <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i> Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i> Copiar</button>
+          <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i> Ejecutar</button>
           ${t.status==='active'
-            ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i></button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i></button>`}
-          <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-trash"></i></button>
+            ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i> Pausar</button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i> Reanudar</button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-trash"></i> Eliminar</button>
         </div>
       </td>
     </tr>`).join('');
@@ -1100,20 +1175,66 @@ async function loadReports() {
 // ══════════════════════════════════════════════════════
 // LOG MODAL
 // ══════════════════════════════════════════════════════
+let _logPollTimer = null;
+let _logPollOffset = 0;
+
+function _logColorLine(l) {
+  const cls = l.includes('ERROR') ? 'log-line-error' : l.includes('WARNING') ? 'log-line-warn' : l.includes('DEBUG') ? 'log-line-debug' : 'log-line-info';
+  return `<span class="${cls}">${esc(l)}</span>`;
+}
+
+function _logAppend(text) {
+  const el = document.getElementById('log-content');
+  const lines = text.split('\n');
+  const html = lines.map(_logColorLine).join('\n');
+  if (el.dataset.empty === '1') { el.innerHTML = html; el.dataset.empty = '0'; }
+  else { el.innerHTML += html; }
+  el.scrollTop = el.scrollHeight;
+}
+
+function _stopLogPoll() {
+  if (_logPollTimer) { clearTimeout(_logPollTimer); _logPollTimer = null; }
+  document.getElementById('log-live-badge').style.display = 'none';
+}
+
+async function _pollLog(runId) {
+  try {
+    const data = await api('GET', `/logs/${runId}/tail?offset=${_logPollOffset}`);
+    if (data.content) _logAppend(data.content);
+    _logPollOffset = data.offset;
+    if (data.status === 'running') {
+      _logPollTimer = setTimeout(() => _pollLog(runId), 1500);
+    } else {
+      _stopLogPoll();
+    }
+  } catch(e) {
+    _stopLogPoll();
+  }
+}
+
 async function viewLog(runId, taskName) {
+  _stopLogPoll();
   currentLogRunId = runId;
+  _logPollOffset = 0;
   document.getElementById('modal-log-title').textContent = `Log — ${taskName} #${runId}`;
-  document.getElementById('log-content').textContent = 'Cargando…';
+  const el = document.getElementById('log-content');
+  el.textContent = 'Cargando…';
+  el.dataset.empty = '1';
+  document.getElementById('log-live-badge').style.display = 'none';
   document.getElementById('modal-log').classList.add('open');
   try {
-    const data = await api('GET', `/logs/${runId}/content`);
-    const lines = data.content.split('\n');
-    document.getElementById('log-content').innerHTML = lines.map(l => {
-      const cls = l.includes('ERROR') ? 'log-line-error' : l.includes('WARNING') ? 'log-line-warn' : l.includes('DEBUG') ? 'log-line-debug' : 'log-line-info';
-      return `<span class="${cls}">${esc(l)}</span>`;
-    }).join('\n');
+    // Primer fetch: carga contenido existente y comprueba si sigue en ejecución
+    const data = await api('GET', `/logs/${runId}/tail?offset=0`);
+    el.dataset.empty = '1';
+    if (data.content) _logAppend(data.content);
+    else { el.textContent = '(sin contenido aún)'; el.dataset.empty = '0'; }
+    _logPollOffset = data.offset;
+    if (data.status === 'running') {
+      document.getElementById('log-live-badge').style.display = 'inline-flex';
+      _logPollTimer = setTimeout(() => _pollLog(runId), 1500);
+    }
   } catch(e) {
-    document.getElementById('log-content').textContent = 'No se pudo cargar el log: ' + e.message;
+    el.textContent = 'No se pudo cargar el log: ' + e.message;
   }
 }
 
@@ -1129,6 +1250,13 @@ function openNewTask() {
   document.getElementById('f-name').value = '';
   document.getElementById('f-desc').value = '';
   document.getElementById('f-path').value = '';
+  document.getElementById('f-access-db').value = '';
+  document.getElementById('f-excel-files').value = '';
+  document.getElementById('f-pre-macros').value = '';
+  document.getElementById('f-saved-imports').value = '';
+  document.getElementById('f-post-macros').value = '';
+  document.getElementById('f-compact').checked = true;
+  document.getElementById('f-access-visible').checked = false;
   document.getElementById('f-hour').value = 6;
   document.getElementById('f-min').value = 0;
   document.getElementById('f-shour').value = 6;
@@ -1142,6 +1270,7 @@ function openNewTask() {
   document.getElementById('f-visible').checked = false;
   document.getElementById('notif-section').style.display = 'none';
   document.getElementById('notif-rules-list').innerHTML = '';
+  setTaskType('excel');
   setSchTab('once');
   document.getElementById('modal-task').classList.add('open');
 }
@@ -1178,17 +1307,41 @@ async function copyTask(id) {
   document.getElementById('modal-task').classList.add('open');
 }
 
+// ══════════════════════════════════════════════════════
+// TASK TYPE TOGGLE
+// ══════════════════════════════════════════════════════
+function setTaskType(type) {
+  document.getElementById('section-excel').style.display    = (type === 'excel')    ? '' : 'none';
+  document.getElementById('section-pipeline').style.display = (type === 'pipeline') ? '' : 'none';
+  document.querySelectorAll('input[name="f-task-type"]').forEach(r => { r.checked = (r.value === type); });
+}
+
 async function openEditTask(id) {
   const t = await api('GET', `/tasks/${id}`);
   editingTaskId = id;
   document.getElementById('modal-task-title').textContent = 'Editar tarea';
   document.getElementById('f-name').value = t.name;
   document.getElementById('f-desc').value = t.description || '';
-  document.getElementById('f-path').value = t.file_path;
-  document.getElementById('f-conns').checked = t.refresh_connections;
-  document.getElementById('f-pivots').checked = t.refresh_pivots;
-  document.getElementById('f-save').checked = t.save_on_success;
-  document.getElementById('f-visible').checked = t.excel_visible;
+
+  const taskType = t.task_type || 'excel';
+  setTaskType(taskType);
+
+  if (taskType === 'pipeline') {
+    const pc = t.pipeline_config || {};
+    document.getElementById('f-access-db').value = pc.access_db || '';
+    document.getElementById('f-excel-files').value = (pc.excel_files || []).map(e => e.path).join('\n');
+    document.getElementById('f-pre-macros').value = (pc.pre_import_macros || []).join('\n');
+    document.getElementById('f-saved-imports').value = (pc.saved_imports || []).join('\n');
+    document.getElementById('f-post-macros').value = (pc.post_import_macros || []).join('\n');
+    document.getElementById('f-compact').checked = pc.compact_before_import !== false;
+    document.getElementById('f-access-visible').checked = !!pc.access_visible;
+  } else {
+    document.getElementById('f-path').value = t.file_path;
+    document.getElementById('f-conns').checked = t.refresh_connections;
+    document.getElementById('f-pivots').checked = t.refresh_pivots;
+    document.getElementById('f-save').checked = t.save_on_success;
+    document.getElementById('f-visible').checked = t.excel_visible;
+  }
 
   const cfg = t.schedule_config || {};
   if (t.schedule_type === 'once_daily') {
@@ -1212,8 +1365,9 @@ async function openEditTask(id) {
 
 async function saveTask() {
   const name = document.getElementById('f-name').value.trim();
-  const path = document.getElementById('f-path').value.trim();
-  if (!name || !path) { toast('Nombre y ruta son obligatorios', 'error'); return; }
+  if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+
+  const taskType = document.querySelector('input[name="f-task-type"]:checked')?.value || 'excel';
 
   let schedule_type, schedule_config;
   if (currentSchTab === 'once') {
@@ -1232,26 +1386,69 @@ async function saveTask() {
     schedule_config = { cron: document.getElementById('f-cron').value.trim() };
   }
 
-  const body = {
-    name,
-    description: document.getElementById('f-desc').value,
-    file_path: path,
-    schedule_type,
-    schedule_config,
-    refresh_connections: document.getElementById('f-conns').checked,
-    refresh_pivots:      document.getElementById('f-pivots').checked,
-    save_on_success:     document.getElementById('f-save').checked,
-    excel_visible:       document.getElementById('f-visible').checked,
-  };
-
   try {
-    if (editingTaskId) {
-      await api('PUT', `/tasks/${editingTaskId}`, body);
-      toast('Tarea actualizada', 'success');
+    if (taskType === 'pipeline') {
+      const accessDb = document.getElementById('f-access-db').value.trim();
+      if (!accessDb) { toast('La ruta de la BD Access es obligatoria', 'error'); return; }
+
+      const excelLines = document.getElementById('f-excel-files').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const preMacros  = document.getElementById('f-pre-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const imports    = document.getElementById('f-saved-imports').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const postMacros = document.getElementById('f-post-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
+
+      const pipelineCfg = {
+        access_db: accessDb,
+        excel_files: excelLines.map(p => ({ path: p, visible: false })),
+        access_visible: document.getElementById('f-access-visible').checked,
+        compact_before_import: document.getElementById('f-compact').checked,
+        pre_import_macros: preMacros,
+        saved_imports: imports,
+        post_import_macros: postMacros,
+        excel_refresh_timeout: 300,
+      };
+
+      if (editingTaskId) {
+        await api('PUT', `/tasks/${editingTaskId}`, {
+          name,
+          description: document.getElementById('f-desc').value,
+          schedule_type, schedule_config,
+          pipeline_config: pipelineCfg,
+        });
+        toast('Pipeline actualizado', 'success');
+      } else {
+        await api('POST', '/tasks/pipeline', {
+          name,
+          description: document.getElementById('f-desc').value,
+          schedule_type, schedule_config,
+          ...pipelineCfg,
+          excel_files: excelLines.map(p => ({ path: p, visible: false })),
+        });
+        toast('Pipeline creado', 'success');
+      }
     } else {
-      await api('POST', '/tasks', body);
-      toast('Tarea creada', 'success');
+      const path = document.getElementById('f-path').value.trim();
+      if (!path) { toast('La ruta del archivo Excel es obligatoria', 'error'); return; }
+
+      const body = {
+        name,
+        description: document.getElementById('f-desc').value,
+        file_path: path,
+        schedule_type, schedule_config,
+        refresh_connections: document.getElementById('f-conns').checked,
+        refresh_pivots:      document.getElementById('f-pivots').checked,
+        save_on_success:     document.getElementById('f-save').checked,
+        excel_visible:       document.getElementById('f-visible').checked,
+      };
+
+      if (editingTaskId) {
+        await api('PUT', `/tasks/${editingTaskId}`, body);
+        toast('Tarea actualizada', 'success');
+      } else {
+        await api('POST', '/tasks', body);
+        toast('Tarea creada', 'success');
+      }
     }
+
     closeModal('modal-task');
     if (currentPage === 'tasks') loadTasks();
     if (currentPage === 'dashboard') loadDashboard();
@@ -1297,7 +1494,10 @@ function setSchTab(tab) {
 // ══════════════════════════════════════════════════════
 // MODAL HELPERS
 // ══════════════════════════════════════════════════════
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'modal-log') _stopLogPoll();
+}
 document.querySelectorAll('.modal-overlay').forEach(o => {
   if (o.id === 'modal-task' || o.id === 'modal-notif-rule') return; // no cerrar al hacer click fuera
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });

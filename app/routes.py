@@ -90,15 +90,43 @@ class TaskUpdate(BaseModel):
     excel_visible: Optional[bool] = None
     max_retries: Optional[int] = None
     retry_delay_s: Optional[int] = None
+    # Pipeline Access ETL
+    pipeline_config: Optional[dict] = None
+
+
+class ExcelFileConfig(BaseModel):
+    path: str
+    visible: bool = False
+
+
+class PipelineTaskCreate(BaseModel):
+    name: str
+    description: str = ""
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    # Pipeline-specific
+    access_db: str
+    excel_files: list[ExcelFileConfig] = []
+    access_visible: bool = False
+    compact_before_import: bool = True
+    pre_import_macros: list[str] = []
+    saved_imports: list[str] = []
+    post_import_macros: list[str] = []
+    excel_refresh_timeout: int = 300
+    max_retries: int = 0
+    retry_delay_s: int = 60
 
 
 def _task_to_dict(task: Task) -> dict:
     cfg = json.loads(task.schedule_config or "{}")
+    pipeline_cfg = json.loads(task.pipeline_config or "{}") if getattr(task, "pipeline_config", None) else {}
     return {
         "id": task.id,
         "name": task.name,
         "description": task.description,
         "file_path": task.file_path,
+        "task_type": getattr(task, "task_type", "excel") or "excel",
+        "pipeline_config": pipeline_cfg,
         "schedule_type": task.schedule_type,
         "schedule_config": cfg,
         "refresh_connections": task.refresh_connections,
@@ -173,6 +201,65 @@ async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
     return _task_to_dict(task)
 
 
+@router.post("/tasks/pipeline", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depends(get_db)):
+    """Crea una tarea de tipo Pipeline Access ETL (Excel → Access)."""
+    # Validar BD Access
+    from app.excel_engine import resolve_path
+    access_db_resolved = resolve_path(body.access_db)
+    if not Path(access_db_resolved).exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"BD Access no encontrada: {access_db_resolved}",
+        )
+    # Validar archivos Excel
+    for ef in body.excel_files:
+        ep = resolve_path(ef.path)
+        if not Path(ep).exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archivo Excel no encontrado: {ep}",
+            )
+
+    pipeline_cfg = {
+        "excel_files": [{"path": ef.path, "visible": ef.visible} for ef in body.excel_files],
+        "access_db": body.access_db,
+        "access_visible": body.access_visible,
+        "compact_before_import": body.compact_before_import,
+        "pre_import_macros": body.pre_import_macros,
+        "saved_imports": body.saved_imports,
+        "post_import_macros": body.post_import_macros,
+        "excel_refresh_timeout": body.excel_refresh_timeout,
+    }
+
+    task = Task(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        file_path=body.access_db,       # BD Access como "archivo principal"
+        task_type="pipeline",
+        pipeline_config=json.dumps(pipeline_cfg),
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        refresh_connections=False,
+        refresh_pivots=False,
+        save_on_success=False,
+        excel_visible=False,
+        max_retries=body.max_retries,
+        retry_delay_s=body.retry_delay_s,
+        status=TaskStatus.ACTIVE,
+    )
+    db.add(task)
+    await db.flush()
+
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
 @router.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
 async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
     task = await db.get(Task, task_id)
@@ -210,6 +297,12 @@ async def update_task(task_id: str, body: TaskUpdate, db: AsyncSession = Depends
         task.max_retries = body.max_retries
     if body.retry_delay_s is not None:
         task.retry_delay_s = body.retry_delay_s
+    if body.pipeline_config is not None:
+        task.pipeline_config = json.dumps(body.pipeline_config)
+        # Actualizar también file_path al nuevo access_db si se incluye
+        new_access_db = body.pipeline_config.get("access_db")
+        if new_access_db:
+            task.file_path = new_access_db
 
     task.updated_at = datetime.now()
     nxt = add_or_replace_job(task)
@@ -495,6 +588,31 @@ async def view_log(run_id: int, db: AsyncSession = Depends(get_db)):
     if not path.exists():
         return {"content": "(archivo de log no disponible)"}
     return {"content": path.read_text(encoding="utf-8", errors="replace")}
+
+
+@router.get("/logs/{run_id}/tail", dependencies=[Depends(verify_api_key)])
+async def tail_log(run_id: int, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    """Devuelve el contenido del log desde `offset` bytes hasta el final.
+    Permite al frontend hacer polling incremental para ver logs en tiempo real."""
+    run = await db.get(RunLog, run_id)
+    if not run:
+        raise HTTPException(404, "Ejecución no encontrada")
+    if not run.log_file:
+        return {"content": "", "offset": 0, "status": run.status}
+    path = Path(run.log_file)
+    if not path.exists():
+        return {"content": "", "offset": 0, "status": run.status}
+    size = path.stat().st_size
+    if offset >= size:
+        return {"content": "", "offset": size, "status": run.status}
+    with path.open("rb") as f:
+        f.seek(offset)
+        chunk = f.read(size - offset)
+    return {
+        "content": chunk.decode("utf-8", errors="replace"),
+        "offset": size,
+        "status": run.status,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════

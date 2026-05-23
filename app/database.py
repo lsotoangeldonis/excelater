@@ -77,6 +77,10 @@ class Task(Base):
     save_on_success     = Column(Boolean, default=True)
     excel_visible       = Column(Boolean, default=False)
 
+    # Pipeline Access ETL
+    task_type        = Column(String, default="excel")  # "excel" | "pipeline"
+    pipeline_config  = Column(Text, default="{}")       # JSON con config del pipeline
+
     # Retry
     max_retries      = Column(Integer, default=0)   # 0 = sin retry
     retry_delay_s    = Column(Integer, default=60)  # Segundos entre reintentos
@@ -153,6 +157,8 @@ def _migrate_existing_db(conn):
         "ALTER TABLE tasks ADD COLUMN max_retries INTEGER DEFAULT 0",
         "ALTER TABLE tasks ADD COLUMN retry_delay_s INTEGER DEFAULT 60",
         "ALTER TABLE tasks ADD COLUMN retry_count INTEGER DEFAULT 0",
+        "ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'excel'",
+        "ALTER TABLE tasks ADD COLUMN pipeline_config TEXT DEFAULT '{}'",
     ]
     for sql in migrations:
         try:

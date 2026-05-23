@@ -102,35 +102,61 @@ async def execute_task(task_id: str):
         await db.commit()
 
     # Ejecutar fuera de la sesión DB para no bloquearla
-    stop_event = threading.Event()
-    cfg = EngineConfig(
-        file_path=task.file_path,
-        refresh_connections=task.refresh_connections,
-        refresh_pivots=task.refresh_pivots,
-        save_on_success=task.save_on_success,
-        excel_visible=task.excel_visible,
-        lock_timeout=settings.lock_timeout_s,
-        lock_retry=settings.lock_retry_s,
-        lock_max_retries=settings.lock_max_retries,
-        refresh_timeout=settings.refresh_timeout_s,
-        refresh_check=settings.refresh_check_s,
-        stop_event=stop_event,
-    )
+    task_type = getattr(task, "task_type", None) or "excel"
 
-    # Registrar esta tarea para permitir cancelación desde el exterior
     _running_tasks[run_id] = asyncio.current_task()
-    _stop_events[run_id] = stop_event
     t0 = time.time()
     cancelled = False
-    try:
-        # Ejecutar en un hilo separado para no bloquear el event loop de asyncio
-        result = await asyncio.to_thread(run_update, cfg, logger)
-    except asyncio.CancelledError:
-        cancelled = True
-        logger.warning("Ejecución detenida manualmente.")
-    finally:
-        _running_tasks.pop(run_id, None)
-        _stop_events.pop(run_id, None)
+
+    if task_type == "pipeline":
+        # ── Pipeline Access ETL ──────────────────────────────────────────
+        from app.access_engine import PipelineConfig, run_pipeline
+        pipeline_cfg_dict = json.loads(task.pipeline_config or "{}")
+        pipe_cfg = PipelineConfig(
+            excel_files=pipeline_cfg_dict.get("excel_files", []),
+            access_db=pipeline_cfg_dict.get("access_db", ""),
+            access_visible=pipeline_cfg_dict.get("access_visible", False),
+            compact_before_import=pipeline_cfg_dict.get("compact_before_import", True),
+            pre_import_macros=pipeline_cfg_dict.get("pre_import_macros", []),
+            saved_imports=pipeline_cfg_dict.get("saved_imports", []),
+            post_import_macros=pipeline_cfg_dict.get("post_import_macros", []),
+            excel_refresh_timeout=pipeline_cfg_dict.get("excel_refresh_timeout", settings.refresh_timeout_s),
+            excel_refresh_check=pipeline_cfg_dict.get("excel_refresh_check", settings.refresh_check_s),
+            excel_lock_timeout=pipeline_cfg_dict.get("excel_lock_timeout", settings.lock_timeout_s),
+        )
+        try:
+            result = await asyncio.to_thread(run_pipeline, pipe_cfg, logger)
+        except asyncio.CancelledError:
+            cancelled = True
+            logger.warning("Ejecución detenida manualmente.")
+        finally:
+            _running_tasks.pop(run_id, None)
+    else:
+        # ── Tarea Excel estándar ─────────────────────────────────────────
+        stop_event = threading.Event()
+        cfg = EngineConfig(
+            file_path=task.file_path,
+            refresh_connections=task.refresh_connections,
+            refresh_pivots=task.refresh_pivots,
+            save_on_success=task.save_on_success,
+            excel_visible=task.excel_visible,
+            lock_timeout=settings.lock_timeout_s,
+            lock_retry=settings.lock_retry_s,
+            lock_max_retries=settings.lock_max_retries,
+            refresh_timeout=settings.refresh_timeout_s,
+            refresh_check=settings.refresh_check_s,
+            stop_event=stop_event,
+        )
+        _stop_events[run_id] = stop_event
+        try:
+            # Ejecutar en un hilo separado para no bloquear el event loop de asyncio
+            result = await asyncio.to_thread(run_update, cfg, logger)
+        except asyncio.CancelledError:
+            cancelled = True
+            logger.warning("Ejecución detenida manualmente.")
+        finally:
+            _running_tasks.pop(run_id, None)
+            _stop_events.pop(run_id, None)
 
     if cancelled:
         async with AsyncSessionLocal() as db:
