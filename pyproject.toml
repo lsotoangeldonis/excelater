@@ -31,7 +31,7 @@ pytest-asyncio = "^0.23.6"
 anyio = {extras = ["trio"], version = "^4.0.0"}
 
 [tool.poetry.scripts]
-scheduler = "app.main:start"
+excelater = "app.main:start"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
