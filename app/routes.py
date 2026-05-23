@@ -895,11 +895,16 @@ async def browse_file(filter: str = Query(default="any")):
     file_filter = _FILTER_MAP.get(filter, _FILTER_MAP["any"])
     ps_script = (
         "Add-Type -AssemblyName System.Windows.Forms; "
+        "$f = New-Object System.Windows.Forms.Form; "
+        "$f.TopMost = $true; "
+        "$f.Opacity = 0; "
+        "$f.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen; "
+        "$f.Show(); "
         "$d = New-Object System.Windows.Forms.OpenFileDialog; "
         f"$d.Filter = '{file_filter}'; "
         "$d.Title = 'Seleccionar archivo'; "
-        "$d.TopMost = $true; "
-        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }"
+        "if ($d.ShowDialog($f) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName } "
+        "$f.Dispose();"
     )
     # Ruta absoluta para evitar FileNotFoundError cuando el servidor no tiene powershell en PATH
     ps_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
