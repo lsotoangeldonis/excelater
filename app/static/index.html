@@ -1256,7 +1256,8 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
           <label>Disparador</label>
           <select id="nr-trigger">
             <option value="always">Siempre (éxito o fallo)</option>
-            <option value="on_error">Solo errores</option>
+            <option value="on_error">Solo errores (cada intento)</option>
+            <option value="on_final_failure">Solo errores (tras agotar reintentos)</option>
             <option value="on_success">Solo éxitos</option>
             <option value="first_run_of_day">Primera ejecución del día</option>
           </select>
@@ -2886,10 +2887,11 @@ function refreshAll() {
 // NOTIFICATION RULES
 // ══════════════════════════════════════════════════════
 const TRIGGER_LABELS = {
-  always:           'Siempre',
-  on_error:         'Solo errores',
-  on_success:       'Solo éxitos',
-  first_run_of_day: 'Primera del día',
+  always:            'Siempre',
+  on_error:          'Solo errores',
+  on_final_failure:  'Tras agotar reintentos',
+  on_success:        'Solo éxitos',
+  first_run_of_day:  'Primera del día',
 };
 
 async function loadNotifRules(taskId) {

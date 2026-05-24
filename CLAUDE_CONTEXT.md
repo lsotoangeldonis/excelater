@@ -61,7 +61,7 @@ deploy.ps1             # Hot-update
 - **Task** (`tasks`): id (uuid), name, file_path, schedule_type, schedule_config (JSON), refresh_*, save_on_success, excel_visible, **task_type** (`excel`/`pipeline`/`workflow`), **pipeline_config** (JSON), max_retries, retry_delay_s, retry_count, status (`active`/`paused`/`disabled`), last_run_at, last_run_status, next_run_at, **deleted_at** (soft delete).
   - `pipeline_config` (cuando `task_type == "pipeline"`): `excel_files[]` (fuentes), `access_db`, `pre_import_macros[]`, `saved_imports[]`, `post_import_macros[]`, `post_refresh_excel_files[]` (paso 8 = tableros consumidores), `compact_position` (`"" | "before_macros" | "after_pre_macros" | "skip"`, default resuelto a `after_pre_macros`), `continue_on_error`, `compact_before_import` (legacy, respetado si `compact_position == ""`), timeouts Excel/Access.
 - **RunLog** (`run_logs`): id, task_id, status (`running`/`success`/`failed`/`skipped`/`cancelled`), started/finished_at, duration_s, log_file, error_msg, connections, pivots_ok/err, retry_attempt.
-- **NotificationRule**: por tarea; trigger (`always`/`on_error`/`on_success`/`first_run_of_day`), channel (`email`/`whatsapp`), recipients (JSON).
+- **NotificationRule**: por tarea; trigger (`always`/`on_error`/`on_success`/`first_run_of_day`/`on_final_failure`), channel (`email`/`whatsapp`), recipients (JSON). `on_final_failure` sólo dispara si `run.status==failed` y `run.retry_attempt >= task.max_retries` (tras agotar reintentos; equivale a `on_error` cuando `max_retries=0`).
 - **ReportSchedule**: reportes resumen programados; mismo schedule_type que Task.
 - **User**: username (unique), full_name, email, hashed_pw, **role** (`superuser`/`admin`/`reader`), is_active, last_login.
 

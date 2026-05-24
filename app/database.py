@@ -48,9 +48,10 @@ class ScheduleType(str, enum.Enum):
 
 class TriggerType(str, enum.Enum):
     ALWAYS           = "always"           # Toda ejecución (éxito o fallo)
-    ON_ERROR         = "on_error"         # Solo fallos
+    ON_ERROR         = "on_error"         # Solo fallos (cada intento)
     ON_SUCCESS       = "on_success"       # Solo éxitos
     FIRST_RUN_OF_DAY = "first_run_of_day" # Solo la primera ejecución del día
+    ON_FINAL_FAILURE = "on_final_failure" # Solo cuando se agotaron los reintentos
 
 
 class ChannelType(str, enum.Enum):

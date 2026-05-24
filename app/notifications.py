@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import (
     AsyncSessionLocal, NotificationRule, ReportSchedule,
-    RunLog, RunStatus, TriggerType, ChannelType,
+    RunLog, RunStatus, Task, TriggerType, ChannelType,
 )
 
 log = logging.getLogger("excelater.notifications")
@@ -220,6 +220,15 @@ async def _should_notify(rule: NotificationRule, run: RunLog, db: AsyncSession) 
             )
         )).scalar_one()
         return count == 0
+    if t == TriggerType.ON_FINAL_FAILURE:
+        # Solo si el fallo ocurrió en el último intento permitido por max_retries.
+        # Si max_retries=0 (sin retries), el fallo original ya es el final.
+        if run.status != RunStatus.FAILED:
+            return False
+        task = await db.get(Task, run.task_id)
+        if task is None:
+            return False
+        return (run.retry_attempt or 0) >= (task.max_retries or 0)
     return False
 
 

@@ -24,6 +24,39 @@
 
 ---
 
+## 2026-05-24 — Feat: trigger `on_final_failure` para alertas tras agotar reintentos
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** con `max_retries=3`, una regla `on_error` enviaba 4 emails (uno por intento). El operador pedía una alerta única cuando la tarea sigue fallando tras agotar todos los reintentos, manteniendo `on_error` como opción para quienes prefieren la señal inmediata por intento.
+
+**Qué cambió:**
+
+- **`app/database.py`**: nuevo valor `ON_FINAL_FAILURE = "on_final_failure"` en el enum `TriggerType`. No requiere migración SQL: la columna `notification_rules.trigger` es `VARCHAR(16)` sin CHECK constraint (verificado vía `sqlite_master`), y `"on_final_failure"` cabe en 16 chars exactos.
+- **`app/notifications.py`**:
+  - Import: añadido `Task`.
+  - `_should_notify`: nueva rama para `ON_FINAL_FAILURE`. Devuelve `True` sólo si `run.status == FAILED` y `(run.retry_attempt or 0) >= (task.max_retries or 0)`. Carga `Task` con `db.get()` por id.
+  - Diseño: con `max_retries=0` (sin reintentos) la condición sigue cumpliéndose, así que el trigger se comporta como `on_error` y es seguro como reemplazo directo.
+- **`app/static/index.html`**:
+  - Modal `modal-notif-rule` (línea ~1260): nueva opción `"Solo errores (tras agotar reintentos)"` en el `<select id="nr-trigger">`. Etiqueta de `on_error` aclarada a "Solo errores (cada intento)" para diferenciarlas.
+  - `TRIGGER_LABELS` (línea ~2888): añadida entrada `on_final_failure: 'Tras agotar reintentos'`.
+
+**Blast radius:**
+
+- Triggers existentes (`always`, `on_error`, `on_success`, `first_run_of_day`) se conservan sin cambios — backward-compatible.
+- El despacho ocurre en `scheduler.py:336-349` después de la lógica de retry: cuando se agotan los reintentos, `task.retry_count` se resetea a 0 pero `RunLog.retry_attempt` ya quedó congelado al valor del último intento (igual a `max_retries`), por lo que la comparación funciona.
+- UI: el frontend no requiere recarga forzada porque las reglas se cargan vía API; usuarios con caché agresiva pueden necesitar Ctrl+F5 para ver la nueva opción del select.
+
+**Documentación actualizada:** `CLAUDE_CONTEXT.md` (lista de triggers en la sección de modelos clave).
+
+**Notas para futuro:**
+
+- Si en el futuro se quiere que `on_error` dispare sólo en intermedios (y excluya el final), añadir simetría: comparar `retry_attempt < max_retries`. Hoy `on_error` sigue disparando en TODOS los intentos para no romper integraciones existentes.
+- El email del trigger `on_final_failure` no incluye conteo de reintentos en el subject ni el body. Si se quiere visualizar "falló 4 veces", añadir `run.retry_attempt` al template `_format_task_message_html` y `_format_task_message_text` en `notifications.py`.
+- No hay UI dedicada para distinguir reglas duplicadas (p.ej. usuario configura `on_error` + `on_final_failure` y recibe 5 emails); considerar warning en `saveNotifRule()` si se detecta esa combinación en la misma tarea.
+
+---
+
 ## 2026-05-24 — Fix: pipeline colgaba RunLog en "RUNNING" para siempre (ImportError silencioso)
 
 **Commits relacionados:** sin commitear aún (working tree).
