@@ -1,4 +1,17 @@
 #Requires -RunAsAdministrator
+param(
+    # Puerto en que escucha uvicorn
+    [int]    $Port            = 8000,
+
+    # Abre el puerto en el Firewall de Windows sin preguntar
+    [switch] $OpenFirewall,
+
+    # Instala sin preguntas interactivas (usa valores por defecto)
+    [switch] $NonInteractive,
+
+    # No inicia la tarea al terminar la instalación
+    [switch] $SkipStart
+)
 <#
 .SYNOPSIS
     Instala Excelater como tarea programada de Windows (Task Scheduler).
@@ -8,6 +21,20 @@
     - Elimina el servicio NSSM si existe
     - Registra la tarea para que arranque al iniciar sesión (Sesión 1)
       → Necesario para Excel COM y OneDrive Files On-Demand
+.PARAMETER Port
+    Puerto en que escucha uvicorn. Por defecto: 8000.
+.PARAMETER OpenFirewall
+    Abre el puerto en el Firewall de Windows sin preguntar.
+.PARAMETER NonInteractive
+    Instala con todos los valores por defecto sin hacer preguntas.
+.PARAMETER SkipStart
+    No inicia la tarea al finalizar la instalacion.
+.EXAMPLE
+    # Instalacion interactiva (pregunta puerto, firewall y arranque)
+    .\install-service.ps1
+.EXAMPLE
+    # No interactivo con firewall abierto en puerto 9000
+    .\install-service.ps1 -NonInteractive -OpenFirewall -Port 9000
 .NOTES
     Debe ejecutarse como Administrador.
     Ejecutar desde la carpeta raíz del proyecto.
@@ -34,6 +61,38 @@ function Write-Ok([string]$msg) {
 function Write-Fail([string]$msg) {
     Write-Host "   ERR $msg" -ForegroundColor Red
     exit 1
+}
+
+# ─────────────────────────────────────────────
+# Configuración interactiva
+# ─────────────────────────────────────────────
+$doFirewall = $OpenFirewall.IsPresent
+$doStart    = -not $SkipStart.IsPresent
+
+if (-not $NonInteractive) {
+    Write-Host ""
+    Write-Host "  Configuracion de instalacion  (Enter = valor por defecto)" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Puerto
+    $inputPort = Read-Host "  Puerto de escucha [default: $Port]"
+    if ($inputPort -match '^\d+$' -and [int]$inputPort -ge 1 -and [int]$inputPort -le 65535) {
+        $Port = [int]$inputPort
+    }
+
+    # Abrir firewall (solo si no fue forzado por -OpenFirewall)
+    if (-not $OpenFirewall) {
+        $ans = Read-Host "  Abrir puerto $Port en el Firewall para acceso en red local? [s/N]"
+        $doFirewall = $ans -match '^[sS]$'
+    }
+
+    # Inicio inmediato (solo si no fue inhibido por -SkipStart)
+    if (-not $SkipStart) {
+        $ans = Read-Host "  Iniciar el servicio al terminar la instalacion? [S/n]"
+        if ($ans -match '^[nN]$') { $doStart = $false }
+    }
+
+    Write-Host ""
 }
 
 # ─────────────────────────────────────────────
@@ -149,7 +208,7 @@ $logsDir = Join-Path $ProjectDir "logs"
 $logFile = Join-Path $logsDir "excelater.log"
 
 # Wrappear con cmd /c para redirigir stdout+stderr al log
-$argument = "/c `"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 >> `"$logFile`" 2>&1"
+$argument = "/c `"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port $Port >> `"$logFile`" 2>&1"
 
 $action = New-ScheduledTaskAction `
     -Execute          "cmd.exe" `
@@ -179,29 +238,60 @@ Register-ScheduledTask `
 Write-Ok "Tarea registrada para usuario: $env:USERNAME"
 
 # ─────────────────────────────────────────────
-# 6. Iniciar tarea
+# 6. Regla de Firewall
 # ─────────────────────────────────────────────
-Write-Step "Iniciando tarea..."
+Write-Step "Configurando regla de firewall..."
 
-Start-ScheduledTask -TaskName $ServiceName
-Start-Sleep -Seconds 4
-
-$taskState = (Get-ScheduledTask -TaskName $ServiceName).State
-if ($taskState -eq "Running") {
-    Write-Ok "Tarea corriendo"
+$firewallRuleName = "Excelater API"
+if ($doFirewall) {
+    $existing = Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue
+    if ($existing) {
+        Set-NetFirewallRule -DisplayName $firewallRuleName -LocalPort $Port | Out-Null
+        Write-Host "   Regla '$firewallRuleName' actualizada -> TCP/$Port" -ForegroundColor Yellow
+    } else {
+        New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow | Out-Null
+        Write-Ok "Regla '$firewallRuleName' creada -> TCP/$Port"
+    }
+    $localIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
+        ($_.PrefixOrigin -eq "Dhcp" -or $_.PrefixOrigin -eq "Manual") -and
+        $_.IPAddress -notmatch "^169\." -and $_.IPAddress -ne "127.0.0.1"
+    } | Select-Object -First 1).IPAddress
+    if ($localIP) {
+        Write-Host "   Acceso en red: http://${localIP}:$Port" -ForegroundColor Green
+    }
 } else {
-    Write-Host "   WARN Estado: $taskState — revisa: $logFile" -ForegroundColor Yellow
+    Write-Host "   Sin cambios en firewall. Acceso solo desde localhost." -ForegroundColor Yellow
 }
 
 # ─────────────────────────────────────────────
-# 7. Resumen
+# 7. Iniciar tarea
+# ─────────────────────────────────────────────
+Write-Step "Iniciando tarea..."
+
+if (-not $doStart) {
+    Write-Host "   Omitido (-SkipStart). Inicia manualmente:" -ForegroundColor Yellow
+    Write-Host "   Start-ScheduledTask -TaskName $ServiceName" -ForegroundColor Yellow
+} else {
+    Start-ScheduledTask -TaskName $ServiceName
+    Start-Sleep -Seconds 4
+
+    $taskState = (Get-ScheduledTask -TaskName $ServiceName).State
+    if ($taskState -eq "Running") {
+        Write-Ok "Tarea corriendo"
+    } else {
+        Write-Host "   WARN Estado: $taskState — revisa: $logFile" -ForegroundColor Yellow
+    }
+}
+
+# ─────────────────────────────────────────────
+# 8. Resumen
 # ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  Excelater registrado en Task Scheduler" -ForegroundColor Cyan
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  URL:      http://localhost:8000"
-Write-Host "  Health:   http://localhost:8000/health"
+Write-Host "  URL:      http://localhost:$Port"
+Write-Host "  Health:   http://localhost:$Port/health"
 Write-Host "  Log:      $logFile"
 Write-Host "  Usuario:  $env:USERNAME  (Sesión 1 — OneDrive + Excel COM OK)"
 Write-Host ""
