@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Recordatorio: acabas de hacer un git commit. Si el cambio es significativo (arquitectura, dependencias, convenciones, schema o flujos), agrega una entrada a CHANGELOG_AI.md siguiendo el formato del archivo. Si el cambio afecta el contexto que leen futuras sesiones, actualiza tambien CLAUDE_CONTEXT.md y AI_SUMMARY.md.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
