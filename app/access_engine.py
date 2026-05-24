@@ -73,10 +73,10 @@ class AccessPipelineRunner:
     Pasos:
         1. Refrescar cada archivo Excel (espera correctamente todos los tipos
            de conexión COM: ODBC, OLEDB, Power Query, WorksheetData).
-        2. Macros pre-importación (p.ej. 'Ejecutar Elimina Cubos').
-        3. Compact & Repair de la BD Access (opcional).
+        2. Compact & Repair de la BD Access (opcional).
+        3. Macros pre-importación (p.ej. 'Ejecutar Elimina Cubos').
         4. Importaciones guardadas (p.ej. 'Importación: Cubo_SKU_SUC').
-        5. Macros post-importación (p.ej. 'Ejecutar ETL Procesos').
+        5. Macros post-importación (p.ej. 'Ejecutar ETL Procesos sin Top Venta Categoría').
     """
 
     def __init__(self, cfg: PipelineConfig, log: logging.Logger):
@@ -170,18 +170,12 @@ class AccessPipelineRunner:
 
     # ── Pasos 3-5: Operaciones en Access abierto ──────────────────────────
 
-    def _run_access_operations(
-        self,
-        db_path: str,
-        run_pre_macros: bool = True,
-        run_saved_imports: bool = True,
-        run_post_macros: bool = True,
-    ) -> bool:
+    def _run_access_operations(self, db_path: str) -> bool:
         """
         Abre la BD Access y ejecuta en orden:
-                    - pre_import_macros (opcional)
-                    - saved_imports (opcional)
-                    - post_import_macros (opcional)
+          - pre_import_macros
+          - saved_imports
+          - post_import_macros
         """
         acc = None
         try:
@@ -193,31 +187,28 @@ class AccessPipelineRunner:
             time.sleep(2)
 
             # ── Macros pre-importación ─────────────────────────────────────
-            if run_pre_macros:
-                for macro in self.cfg.pre_import_macros:
-                    self.log.info(f"[Access] Macro pre-import: '{macro}'")
-                    acc.DoCmd.RunMacro(macro)
-                    self.log.info(f"[Access] '{macro}' completada.")
-                    time.sleep(1)
+            for macro in self.cfg.pre_import_macros:
+                self.log.info(f"[Access] Macro pre-import: '{macro}'")
+                acc.DoCmd.RunMacro(macro)
+                self.log.info(f"[Access] '{macro}' completada.")
+                time.sleep(1)
 
             # ── Importaciones guardadas ────────────────────────────────────
             # DoCmd.RunSavedImportExport es SINCRÓNICO: bloquea hasta completar.
             # La clave es que los archivos Excel ya están guardados con datos
             # actualizados gracias al paso anterior.
-            if run_saved_imports:
-                for spec in self.cfg.saved_imports:
-                    self.log.info(f"[Access] Importación guardada: '{spec}'")
-                    acc.DoCmd.RunSavedImportExport(spec)
-                    self.log.info(f"[Access] '{spec}' importada.")
-                    time.sleep(1)
+            for spec in self.cfg.saved_imports:
+                self.log.info(f"[Access] Importación guardada: '{spec}'")
+                acc.DoCmd.RunSavedImportExport(spec)
+                self.log.info(f"[Access] '{spec}' importada.")
+                time.sleep(1)
 
             # ── Macros post-importación ────────────────────────────────────
-            if run_post_macros:
-                for macro in self.cfg.post_import_macros:
-                    self.log.info(f"[Access] Macro post-import: '{macro}'")
-                    acc.DoCmd.RunMacro(macro)
-                    self.log.info(f"[Access] '{macro}' completada.")
-                    time.sleep(1)
+            for macro in self.cfg.post_import_macros:
+                self.log.info(f"[Access] Macro post-import: '{macro}'")
+                acc.DoCmd.RunMacro(macro)
+                self.log.info(f"[Access] '{macro}' completada.")
+                time.sleep(1)
 
             return True
         except Exception:
@@ -272,24 +263,7 @@ class AccessPipelineRunner:
                 res.duration_s = round(time.time() - t0, 2)
                 return res
 
-        # ── Paso 2: Macros pre-importación ────────────────────────────────
-        if self.cfg.pre_import_macros:
-            self.log.info("[Access] Ejecutando macros pre-importación...")
-            if self._run_access_operations(
-                self.cfg.access_db,
-                run_pre_macros=True,
-                run_saved_imports=False,
-                run_post_macros=False,
-            ):
-                for m in self.cfg.pre_import_macros:
-                    res.steps_done.append(f"Macro pre: {m}")
-            else:
-                res.error_msg = "Error en macros pre-importación"
-                res.steps_failed.append("Macros pre-importación")
-                res.duration_s = round(time.time() - t0, 2)
-                return res
-
-        # ── Paso 3: Compact & Repair ───────────────────────────────────────
+        # ── Paso 2: Compact & Repair ───────────────────────────────────────
         if self.cfg.compact_before_import:
             self.log.info("[Access] Iniciando Compact & Repair...")
             if self._compact_repair(self.cfg.access_db):
@@ -300,17 +274,11 @@ class AccessPipelineRunner:
                 res.duration_s = round(time.time() - t0, 2)
                 return res
 
-        # ── Pasos 4-5: Importaciones + macros post ────────────────────────
-        self.log.info("[Access] Ejecutando importaciones y macros post...")
-        if self._run_access_operations(
-            self.cfg.access_db,
-            run_pre_macros=False,
-            run_saved_imports=True,
-            run_post_macros=True,
-        ):
+        # ── Pasos 3-5: Operaciones Access ─────────────────────────────────
+        self.log.info("[Access] Iniciando operaciones en BD...")
+        if self._run_access_operations(self.cfg.access_db):
             for m in self.cfg.pre_import_macros:
-                if f"Macro pre: {m}" not in res.steps_done:
-                    res.steps_done.append(f"Macro pre: {m}")
+                res.steps_done.append(f"Macro pre: {m}")
             for s in self.cfg.saved_imports:
                 res.steps_done.append(f"Import: {s}")
             for m in self.cfg.post_import_macros:

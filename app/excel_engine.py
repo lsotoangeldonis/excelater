@@ -41,6 +41,7 @@ class EngineResult:
     pivots_err: int = 0
     error_msg: str = ""
     duration_s: float = 0.0
+    pivots_completed: list = field(default_factory=list)  # [{"sheet": .., "pivot": ..}, ...]
 
 
 @dataclass
@@ -56,6 +57,9 @@ class EngineConfig:
     refresh_timeout: int = 300
     refresh_check: int = 3
     stop_event: threading.Event = field(default_factory=threading.Event)
+    pivot_max_retries: int = 3          # reintentos intra-ejecución por pivot
+    pivot_retry_delay_s: int = 60       # espera (s) entre reintentos de pivot
+    skip_pivots: set = field(default_factory=set)  # set de (sheet_name, pivot_name) a saltar
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -293,21 +297,51 @@ class ExcelCOMUpdater:
                 else:
                     raise
 
-    def _refresh_pivots(self) -> tuple[int, int]:
+    def _refresh_pivots(self, res: "EngineResult") -> tuple[int, int]:
         ok = err = 0
+        max_retries   = self.cfg.pivot_max_retries
+        retry_delay   = self.cfg.pivot_retry_delay_s
+        skip          = self.cfg.skip_pivots  # set de (sheet_name, pivot_name)
+
         for s in range(1, self.wb.Sheets.Count + 1):
             sheet = self._com_retry(lambda idx=s: self.wb.Sheets(idx))
             for p in range(1, self._com_retry(lambda sh=sheet: sh.PivotTables().Count) + 1):
-                pt = self._com_retry(lambda sh=sheet, idx=p: sh.PivotTables(idx))
-                try:
-                    self._com_retry(lambda t=pt: t.RefreshTable())
-                    ok += 1
-                    self.log.info(f"  ✔ PivotTable '{pt.Name}' en '{sheet.Name}'")
-                except Exception as e:
-                    err += 1
-                    self.log.error(f"  ✘ PivotTable '{pt.Name}' en '{sheet.Name}': {e}")
-                    # Pausa tras fallo de pivot para que Excel vuelva a estado estable
-                    time.sleep(2)
+                pt         = self._com_retry(lambda sh=sheet, idx=p: sh.PivotTables(idx))
+                sheet_name = sheet.Name
+                pt_name    = pt.Name
+
+                # ── Skip: pivot ya completado en run anterior ─────────────
+                if (sheet_name, pt_name) in skip:
+                    self.log.info(f"  ↷ PivotTable '{pt_name}' en '{sheet_name}' — saltado (ya actualizado)")
+                    continue
+
+                # ── Retry intra-ejecución ─────────────────────────────────
+                last_exc = None
+                for attempt in range(max_retries + 1):
+                    try:
+                        self._com_retry(lambda t=pt: t.RefreshTable())
+                        ok += 1
+                        self.log.info(f"  ✔ PivotTable '{pt_name}' en '{sheet_name}'")
+                        res.pivots_completed.append({"sheet": sheet_name, "pivot": pt_name})
+                        last_exc = None
+                        break
+                    except Exception as e:
+                        last_exc = e
+                        if attempt < max_retries:
+                            self.log.warning(
+                                f"  ↻ Reintento {attempt + 1}/{max_retries} "
+                                f"PivotTable '{pt_name}' en '{sheet_name}' "
+                                f"(esperando {retry_delay}s)..."
+                            )
+                            time.sleep(retry_delay)
+                        else:
+                            err += 1
+                            self.log.error(
+                                f"  ✘ PivotTable '{pt_name}' en '{sheet_name}' "
+                                f"(falló {max_retries + 1} intentos): {last_exc}"
+                            )
+                            # Pausa para que Excel vuelva a estado estable
+                            time.sleep(2)
         return ok, err
 
     def run(self) -> EngineResult:
@@ -321,7 +355,7 @@ class ExcelCOMUpdater:
             res.connections_found = n_conn
 
             if self.cfg.refresh_pivots:
-                res.pivots_ok, res.pivots_err = self._refresh_pivots()
+                res.pivots_ok, res.pivots_err = self._refresh_pivots(res)
 
             res.success = conn_ok and res.pivots_err == 0
             if not res.success and not res.error_msg:

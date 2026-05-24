@@ -80,7 +80,7 @@ async def send_webhook(payload: dict):
 # EJECUCIÓN DE TAREA
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def execute_task(task_id: str, config_overrides: dict | None = None):
+async def execute_task(task_id: str):
     async with AsyncSessionLocal() as db:
         task = await db.get(Task, task_id)
         if not task or task.status != TaskStatus.ACTIVE:
@@ -92,7 +92,6 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
             task_name=task.name,
             status=RunStatus.RUNNING,
             started_at=datetime.now(),
-            retry_attempt=task.retry_count,  # 0=original, 1=primer reintento, etc.
         )
         db.add(run)
         await db.flush()
@@ -132,37 +131,6 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
             logger.warning("Ejecución detenida manualmente.")
         finally:
             _running_tasks.pop(run_id, None)
-    elif task_type == "workflow":
-        # ── Workflow personalizado (registry) ────────────────────────────
-        from app.workflows import registry
-        workflow_cfg = json.loads(task.pipeline_config or "{}")
-        # Aplicar overrides en tiempo de ejecución (ej: force_weekday para pruebas)
-        if config_overrides:
-            workflow_cfg = {**workflow_cfg, **config_overrides}
-        workflow_type_name = workflow_cfg.get("workflow_type", "")
-        handler_cls = registry.get(workflow_type_name)
-        if handler_cls is None:
-            result = type(
-                "EngineResult", (),
-                {
-                    "success": False,
-                    "error_msg": f"Workflow desconocido: '{workflow_type_name}'. "
-                                 f"Disponibles: {registry.available()}",
-                    "duration_s": 0.0,
-                    "connections_found": 0,
-                    "pivots_ok": 0,
-                    "pivots_err": 0,
-                },
-            )()
-            _running_tasks.pop(run_id, None)
-        else:
-            try:
-                result = await asyncio.to_thread(handler_cls().run, workflow_cfg, logger)
-            except asyncio.CancelledError:
-                cancelled = True
-                logger.warning("Ejecución detenida manualmente.")
-            finally:
-                _running_tasks.pop(run_id, None)
     else:
         # ── Tarea Excel estándar ─────────────────────────────────────────
         stop_event = threading.Event()
@@ -199,10 +167,6 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
                 run.duration_s = round(time.time() - t0, 2)
                 run.error_msg = "Detenida manualmente"
                 await db.commit()
-                task = await db.get(Task, task_id)
-                if task:
-                    task.last_run_status = RunStatus.CANCELLED.value
-                    await db.commit()
         return
 
     finished = datetime.now()
@@ -219,7 +183,11 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
 
         task = await db.get(Task, task_id)
         task.last_run_at = finished
-        task.last_run_status = (RunStatus.SUCCESS if result.success else RunStatus.FAILED).value
+
+        # Calcular próxima ejecución
+        job = scheduler.get_job(task_id)
+        if job and job.next_run_time:
+            task.next_run_at = job.next_run_time.replace(tzinfo=None)
 
         # ── Retry automático ──────────────────────────────────────────────
         if not result.success and task.max_retries > 0:
@@ -235,25 +203,15 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
                     kwargs={"task_id": task_id},
                     replace_existing=True,
                 )
-                # Próxima ejecución = momento del reintento (tiene prioridad sobre schedule regular)
-                task.next_run_at = retry_time
                 logger.warning(
                     f"Reintento {task.retry_count}/{task.max_retries} "
-                    f"programado en {delay}s ({retry_time.strftime('%H:%M:%S')})."
+                    f"programado en {delay}s."
                 )
             else:
                 task.retry_count = 0
                 logger.error("Se agotaron todos los reintentos.")
-                # Restaurar próxima ejecución al schedule regular
-                job = scheduler.get_job(task_id)
-                if job and job.next_run_time:
-                    task.next_run_at = job.next_run_time.replace(tzinfo=None)
-        else:
-            # Éxito o sin retries: próxima ejecución = schedule regular
-            task.retry_count = 0 if result.success else task.retry_count
-            job = scheduler.get_job(task_id)
-            if job and job.next_run_time:
-                task.next_run_at = job.next_run_time.replace(tzinfo=None)
+        elif result.success:
+            task.retry_count = 0
 
         await db.commit()
 

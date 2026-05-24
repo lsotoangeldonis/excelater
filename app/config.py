@@ -29,8 +29,14 @@ class Settings(BaseSettings):
     refresh_timeout_s: int = 300
     refresh_check_s: int = 3
 
-    # Autenticación (vacío = sin auth)
+    # Autenticación legacy (vacío = sin auth)
     api_key: str = ""
+
+    # Autenticación JWT
+    jwt_secret: str = ""          # Se genera al crear el superadmin si está vacío
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480  # 8 horas por defecto
+    auth_enabled: bool = True      # False = deshabilita auth (solo desarrollo)
 
     # Notificaciones webhook
     webhook_url: str = ""           # URL a la que se enviará un POST en cada ejecución

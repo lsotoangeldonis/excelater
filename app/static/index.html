@@ -142,35 +142,6 @@ main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon { padding: 5px 8px; }
 
-/* ── Split button dropdown ── */
-.split-btn { position: relative; display: inline-flex; }
-.split-btn .btn:first-child { border-radius: 5px 0 0 5px; border-right: none; }
-.split-btn .split-caret { border-radius: 0 5px 5px 0; padding: 4px 8px; border-left: 1px solid rgba(255,97,136,.35); }
-.split-menu {
-  display: none; position: absolute; right: 0; top: calc(100% + 5px);
-  background: var(--bg2); border: 1px solid var(--border2);
-  border-radius: 6px; z-index: 300; min-width: 180px; overflow: hidden;
-  box-shadow: 0 4px 18px rgba(0,0,0,.45);
-}
-.split-menu.open { display: block; }
-.split-menu-item {
-  width: 100%; display: flex; align-items: center; gap: 8px;
-  padding: 9px 14px; background: none; border: none; cursor: pointer;
-  color: var(--text); font-size: 13px; font-family: var(--sans); text-align: left;
-}
-.split-menu-item:hover { background: rgba(171,157,242,.08); }
-
-@keyframes spin-once {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-.btn-spinning i { animation: spin-once 0.65s ease; }
-
-/* ── Refresh info ── */
-.refresh-info { text-align: right; line-height: 1.4; }
-.refresh-last { font-size: 11px; color: var(--text2); font-family: var(--mono); }
-.refresh-next { font-size: 10px; color: var(--text3); font-family: var(--mono); }
-
 /* ── Pages ── */
 .page { display: none; padding: 28px; }
 .page.active { display: block; }
@@ -237,8 +208,6 @@ tr:hover td { background: rgba(171,157,242,.04); }
 .badge-gray::before   { background: var(--text2); }
 .badge-purple { background: rgba(171,157,242,.12); color: var(--purple); }
 .badge-purple::before { background: var(--purple); }
-.badge-running { background: rgba(120,220,232,.12); color: var(--cyan); cursor: pointer; }
-.badge-running::before { background: var(--cyan); animation: pulse 1s infinite; }
 
 /* ── Schedule pill ── */
 .schedule-pill {
@@ -302,33 +271,6 @@ input:focus, select:focus, textarea:focus {
 }
 select option { background: var(--bg2); }
 textarea { resize: vertical; min-height: 70px; }
-
-/* ── Input con botón browse ── */
-.input-browse-wrap { display: flex; position: relative; }
-.input-browse-wrap input {
-  border-radius: 5px 0 0 5px;
-  border-right: none;
-  flex: 1;
-  width: 0; /* fuerza que flex-grow domine */
-  min-width: 0;
-}
-.input-browse-wrap input:focus { z-index: 1; }
-.btn-browse {
-  flex-shrink: 0;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-left: none;
-  border-radius: 0 5px 5px 0;
-  color: var(--text2);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0 10px;
-  transition: background .15s, color .15s, border-color .15s;
-  display: flex; align-items: center; gap: 5px;
-  white-space: nowrap;
-}
-.btn-browse:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent); }
-.btn-browse:active { background: var(--bg1); }
 
 .schedule-builder { margin-top: 8px; }
 .sch-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
@@ -401,16 +343,6 @@ textarea { resize: vertical; min-height: 70px; }
 .log-line-warn  { color: var(--yellow); }
 .log-line-info  { color: var(--text); }
 .log-line-debug { color: var(--text3); }
-.log-live-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  background: rgba(255,97,136,.15); color: var(--red);
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
-  padding: 2px 8px; border-radius: 4px; letter-spacing: .08em;
-}
-.log-live-badge .live-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--red);
-  animation: pulse 1s infinite;
-}
 
 /* ── Empty state ── */
 .empty {
@@ -427,23 +359,9 @@ textarea { resize: vertical; min-height: 70px; }
 .page-btns { display: flex; gap: 6px; }
 
 /* ── Filter bar ── */
-.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
 .search-input { max-width: 260px; }
 select.filter-select { max-width: 160px; }
-
-/* ── Sortable headers ── */
-th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-th.sortable:hover { color: var(--text); background: var(--bg2); }
-.sort-icon { font-size: 10px; margin-left: 4px; color: var(--text3); transition: color .15s; }
-th.sortable:hover .sort-icon { color: var(--text2); }
-th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
-
-/* ── Task count chip ── */
-.count-chip {
-  font-family: var(--mono); font-size: 11px; color: var(--text2);
-  background: var(--bg3); border: 1px solid var(--border);
-  padding: 2px 8px; border-radius: 12px; margin-left: 6px;
-}
 
 /* ── Toast ── */
 .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
@@ -516,11 +434,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="page-sub" id="page-sub">Resumen general del sistema</div>
       </div>
       <div class="topbar-actions">
-        <div class="refresh-info">
-          <div class="refresh-last" id="refresh-last">—</div>
-          <div class="refresh-next" id="refresh-next">—</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="btn-refresh" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
         <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva tarea</button>
       </div>
     </div>
@@ -554,24 +468,17 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="table-header">
           <div class="table-title">Próximas ejecuciones</div>
           <div class="table-actions">
-            <span class="hint-mono">Auto-actualiza cada 3 min</span>
+            <span class="hint-mono">Auto-actualiza cada 30s</span>
           </div>
         </div>
         <table id="upcoming-table">
           <thead>
             <tr>
-              <th class="sortable" data-sort="name" onclick="tableSortBy('upcoming-table','name',renderUpcomingSorted)">Tarea<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="task_type" onclick="tableSortBy('upcoming-table','task_type',renderUpcomingSorted)">Tipo<span class="sort-icon">↑</span></th>
-              <th>Programación</th>
-              <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('upcoming-table','last_run_at',renderUpcomingSorted)">Última ejecución<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="next_run_at" onclick="tableSortBy('upcoming-table','next_run_at',renderUpcomingSorted)">Próxima<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="retry_count" onclick="tableSortBy('upcoming-table','retry_count',renderUpcomingSorted)">Reintentos<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="status" onclick="tableSortBy('upcoming-table','status',renderUpcomingSorted)">Estado<span class="sort-icon">↑</span></th>
-              <th>Acciones</th>
+              <th>Tarea</th><th>Programación</th><th>Última ejecución</th><th>Próxima</th><th>Estado</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody id="upcoming-body">
-            <tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -580,45 +487,25 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
     <!-- PAGE: TASKS -->
     <div class="page" id="page-tasks">
       <div class="filter-bar">
-        <input id="task-search" class="search-input" type="text" placeholder="Buscar tareas…" oninput="setTaskFilter('search', this.value)" />
-        <select class="filter-select" id="task-filter-status" onchange="setTaskFilter('status', this.value)">
+        <input class="search-input" type="text" placeholder="Buscar tareas…" oninput="filterTasks(this.value)" />
+        <select class="filter-select" onchange="filterTaskStatus(this.value)">
           <option value="">Todos los estados</option>
           <option value="active">Activa</option>
           <option value="paused">Pausada</option>
           <option value="disabled">Desactivada</option>
         </select>
-        <select class="filter-select" id="task-filter-type" onchange="setTaskFilter('type', this.value)">
-          <option value="">Todos los tipos</option>
-          <option value="excel">Excel</option>
-          <option value="pipeline">Pipeline</option>
-        </select>
-        <button class="btn btn-ghost btn-sm" id="btn-clear-task-filters" onclick="clearTaskFilters()" style="display:none">
-          <i class="fa-solid fa-xmark"></i> Limpiar
-        </button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
-          <div class="table-title">Tareas configuradas<span class="count-chip" id="tasks-count"></span></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-ghost btn-sm" onclick="exportTasks()" title="Exportar todas las tareas a JSON"><i class="fa-solid fa-file-export"></i> Exportar</button>
-            <label class="btn btn-ghost btn-sm" style="cursor:pointer" title="Importar tareas desde JSON"><i class="fa-solid fa-file-import"></i> Importar<input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importTasks(this)"></label>
-            <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
-          </div>
+          <div class="table-title">Tareas configuradas</div>
+          <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
         </div>
-        <table id="tasks-table">
+        <table>
           <thead>
-            <tr>
-              <th class="sortable" data-sort="name" onclick="tableSortBy('tasks-table','name',applyTaskFilters)">Nombre<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="file_path" onclick="tableSortBy('tasks-table','file_path',applyTaskFilters)">Archivo<span class="sort-icon">↑</span></th>
-              <th>Programación</th>
-              <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('tasks-table','last_run_at',applyTaskFilters)">Última ejecución<span class="sort-icon">↑</span></th>
-              <th>Opciones</th>
-              <th class="sortable" data-sort="status" onclick="tableSortBy('tasks-table','status',applyTaskFilters)">Estado<span class="sort-icon">↑</span></th>
-              <th>Acciones</th>
-            </tr>
+            <tr><th>Nombre</th><th>Archivo</th><th>Programación</th><th>Opciones</th><th>Estado</th><th>Acciones</th></tr>
           </thead>
           <tbody id="tasks-body">
-            <tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -630,7 +517,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <select class="filter-select" id="log-filter-task" onchange="loadLogs(1)">
           <option value="">Todas las tareas</option>
         </select>
-        <select id="log-filter-status" class="filter-select" onchange="logStatusFilter=this.value;loadLogs(1)">
+        <select class="filter-select" onchange="logStatusFilter=this.value;loadLogs(1)">
           <option value="">Todos los estados</option>
           <option value="success">Exitosas</option>
           <option value="failed">Fallidas</option>
@@ -641,35 +528,17 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="table-header">
           <div class="table-title">Historial de ejecuciones</div>
           <div class="table-actions">
-            <div class="split-btn" id="clear-logs-split">
-              <button class="btn btn-danger btn-sm" onclick="clearLogs('all')" title="Elimina todos los registros del historial (no afecta ejecuciones activas)">
-                <i class="fa-solid fa-trash"></i> Limpiar historial
-              </button>
-              <button class="btn btn-danger btn-sm btn-icon split-caret" onclick="toggleClearMenu(event)" title="Más opciones">
-                <i class="fa-solid fa-chevron-down" style="font-size:10px"></i>
-              </button>
-              <div class="split-menu" id="clear-logs-menu">
-                <button class="split-menu-item" onclick="clearLogs('all')"><i class="fa-solid fa-trash"></i> Todo el historial</button>
-                <button class="split-menu-item" onclick="clearLogs('errors')"><i class="fa-solid fa-circle-xmark" style="color:var(--red)"></i> Solo errores</button>
-              </div>
-            </div>
+            <button class="btn btn-danger btn-sm" onclick="clearLogs()" title="Elimina todos los registros e historial del historial (no afecta ejecuciones activas)">
+              <i class="fa-solid fa-trash"></i> Limpiar historial
+            </button>
           </div>
         </div>
-        <table id="logs-table">
+        <table>
           <thead>
-            <tr>
-              <th>#</th>
-              <th class="sortable" data-sort="task_name" onclick="tableSortBy('logs-table','task_name',_rerenderCurrentLogs)">Tarea<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="started_at" onclick="tableSortBy('logs-table','started_at',_rerenderCurrentLogs)">Inicio<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="duration_s" onclick="tableSortBy('logs-table','duration_s',_rerenderCurrentLogs)">Duración<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="retry_attempt" onclick="tableSortBy('logs-table','retry_attempt',_rerenderCurrentLogs)">Reintentos<span class="sort-icon">↑</span></th>
-              <th>Conexiones</th><th>Pivots</th>
-              <th class="sortable" data-sort="status" onclick="tableSortBy('logs-table','status',_rerenderCurrentLogs)">Estado<span class="sort-icon">↑</span></th>
-              <th>Log</th>
-            </tr>
+            <tr><th>#</th><th>Tarea</th><th>Inicio</th><th>Duración</th><th>Conexiones</th><th>Pivots</th><th>Estado</th><th>Log</th></tr>
           </thead>
           <tbody id="logs-body">
-            <tr><td colspan="9"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+            <tr><td colspan="8"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
         <div class="pagination">
@@ -691,16 +560,9 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             <span class="hint-text">Haz clic en <i class="fa-solid fa-download"></i> para descargar</span>
           </div>
         </div>
-        <table id="reports-table">
+        <table>
           <thead>
-            <tr>
-              <th>#</th>
-              <th class="sortable" data-sort="task_name" onclick="tableSortBy('reports-table','task_name',renderReports)">Tarea<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="started_at" onclick="tableSortBy('reports-table','started_at',renderReports)">Fecha inicio<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="status" onclick="tableSortBy('reports-table','status',renderReports)">Estado<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="duration_s" onclick="tableSortBy('reports-table','duration_s',renderReports)">Duración<span class="sort-icon">↑</span></th>
-              <th>Error</th><th>Acciones</th>
-            </tr>
+            <tr><th>#</th><th>Tarea</th><th>Fecha inicio</th><th>Estado</th><th>Duración</th><th>Error</th><th>Acciones</th></tr>
           </thead>
           <tbody id="reports-body">
             <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -718,15 +580,9 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             <button class="btn btn-primary btn-sm" onclick="openNewSchedReport()"><i class="fa-solid fa-plus"></i> Nuevo reporte</button>
           </div>
         </div>
-        <table id="schedreports-table">
+        <table>
           <thead>
-            <tr>
-              <th class="sortable" data-sort="name" onclick="tableSortBy('schedreports-table','name',renderSchedReports)">Nombre<span class="sort-icon">↑</span></th>
-              <th class="sortable" data-sort="channel" onclick="tableSortBy('schedreports-table','channel',renderSchedReports)">Canal<span class="sort-icon">↑</span></th>
-              <th>Programación</th><th>Ventana</th><th>Tareas</th>
-              <th class="sortable" data-sort="enabled" onclick="tableSortBy('schedreports-table','enabled',renderSchedReports)">Estado<span class="sort-icon">↑</span></th>
-              <th>Acciones</th>
-            </tr>
+            <tr><th>Nombre</th><th>Canal</th><th>Programación</th><th>Ventana</th><th>Tareas</th><th>Estado</th><th>Acciones</th></tr>
           </thead>
           <tbody id="schedreports-body">
             <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
@@ -766,10 +622,6 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
               <input type="radio" name="f-task-type" value="pipeline" onchange="setTaskType('pipeline')">
               <span style="color:var(--cyan)"><i class="fa-solid fa-database" style="font-size:11px"></i> Pipeline Access ETL</span>
             </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-              <input type="radio" name="f-task-type" value="workflow" onchange="setTaskType('workflow')">
-              <span style="color:#e67e22"><i class="fa-solid fa-calendar-week" style="font-size:11px"></i> Workflow Semanal</span>
-            </label>
           </div>
         </div>
       </div>
@@ -778,12 +630,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
       <div id="section-excel">
         <div class="form-group form-full">
           <label>Ruta del archivo Excel</label>
-          <div class="input-browse-wrap">
-            <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
-            <button type="button" class="btn-browse" onclick="browseFile('f-path','excel')" title="Buscar archivo">
-              <i class="fa-solid fa-folder-open"></i>
-            </button>
-          </div>
+          <input id="f-path" type="text" placeholder="%USERPROFILE%\OneDrive - Empresa\SharePoint\Reporte.xlsx">
         </div>
         <div class="section-label">OPCIONES EXCEL</div>
         <div>
@@ -823,12 +670,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="section-label">BASE DE DATOS ACCESS</div>
         <div class="form-group form-full">
           <label>Ruta de la BD Access (.accdb)</label>
-          <div class="input-browse-wrap">
-            <input id="f-access-db" type="text" placeholder="C:\Tableros\6 DWH Access\DWH Grupo Vega.accdb">
-            <button type="button" class="btn-browse" onclick="browseFile('f-access-db','access')" title="Buscar archivo">
-              <i class="fa-solid fa-folder-open"></i>
-            </button>
-          </div>
+          <input id="f-access-db" type="text" placeholder="C:\Tableros\6 DWH Access\DWH Grupo Vega.accdb">
         </div>
         <div class="section-label">ARCHIVOS EXCEL A REFRESCAR (uno por línea)</div>
         <div class="form-group form-full">
@@ -865,102 +707,6 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             </div>
             <label class="toggle"><input type="checkbox" id="f-access-visible"><span class="toggle-slider"></span></label>
           </div>
-        </div>
-      </div>
-
-      <!-- ── SECCIÓN WORKFLOW SEMANAL ──────────────────────────── -->
-      <div id="section-workflow" style="display:none">
-        <div class="section-label">TIPO DE FLUJO</div>
-        <div class="form-group form-full" style="font-family:var(--mono);font-size:12px;color:var(--text2);padding:4px 0 8px">
-          <i class="fa-solid fa-calendar-week" style="color:#e67e22"></i>&nbsp; <strong>Copia Semanal Excel</strong> — cada lunes duplica el archivo de la semana anterior, lo refresca y lo guarda con el nombre de la semana actual.
-        </div>
-        <div class="section-label">CONFIGURACIÓN</div>
-        <div class="form-group form-full">
-          <label>Carpeta base</label>
-          <div class="input-browse-wrap">
-            <input id="f-wf-folder" type="text" placeholder="C:\Users\...\OneDrive - Empresa\FileServer\2. Análisis de Ventas">
-            <button type="button" class="btn-browse" onclick="browseFolder('f-wf-folder')" title="Buscar carpeta">
-              <i class="fa-solid fa-folder-open"></i>
-            </button>
-          </div>
-          <span class="hint-sm">Carpeta donde residen los archivos semanales.</span>
-        </div>
-        <div class="form-group form-full">
-          <label>Patrones de nombre de archivo (uno por línea)</label>
-          <textarea id="f-wf-patterns" rows="3" placeholder="Analisis Ventas The Box Sem {week}.xlsx" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
-          <span class="hint-sm">Usa <code>{week}</code> como placeholder del número de semana ISO. Ej: <code>Analisis Ventas The Box Sem {week}.xlsx</code></span>
-        </div>
-        <div style="display:flex;gap:12px;">
-          <div class="form-group" style="flex:1">
-            <label>Dígitos del número de semana</label>
-            <input id="f-wf-padding" type="number" min="1" max="3" value="2">
-            <span class="hint-sm">2 → &quot;Sem 05&quot; &nbsp;|&nbsp; 1 → &quot;Sem 5&quot;</span>
-          </div>
-          <div class="form-group" style="flex:1">
-            <label>Timeout refresco (segundos)</label>
-            <input id="f-wf-timeout" type="number" min="60" max="1800" value="300">
-          </div>
-        </div>
-        <div class="section-label">OPCIONES</div>
-        <div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div>Refresco diario</div>
-              <div class="toggle-desc">Si activo, refresca el archivo de la semana actual también en días no-lunes. Requiere programar la tarea con frecuencia diaria.</div>
-            </div>
-            <label class="toggle"><input type="checkbox" id="f-wf-daily-refresh"><span class="toggle-slider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div>Fallar si no existe el archivo fuente</div>
-              <div class="toggle-desc">La tarea falla cuando el archivo de la semana anterior no existe (recomendado para detectar problemas)</div>
-            </div>
-            <label class="toggle"><input type="checkbox" id="f-wf-fail-missing" checked><span class="toggle-slider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div>Mostrar ventana de Excel</div>
-              <div class="toggle-desc">Útil para depuración (por defecto oculto)</div>
-            </div>
-            <label class="toggle"><input type="checkbox" id="f-wf-visible"><span class="toggle-slider"></span></label>
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-info">
-              <div>Expansión automática de tabla dinámica</div>
-              <div class="toggle-desc">Antes de refrescar, inserta columnas vacías a la derecha de la tabla dinámica para evitar que los datos adyacentes la bloqueen.</div>
-            </div>
-            <label class="toggle"><input type="checkbox" id="f-wf-pg-enabled" onchange="document.getElementById('f-wf-pg-fields').style.display=this.checked?'':'none'"><span class="toggle-slider"></span></label>
-          </div>
-          <div id="f-wf-pg-fields" style="display:none;padding:8px 0 4px">
-            <div style="display:flex;gap:12px;">
-              <div class="form-group" style="flex:2">
-                <label>Hoja</label>
-                <input id="f-wf-pg-sheet" type="text" value="Venta" placeholder="Venta">
-              </div>
-              <div class="form-group" style="flex:2">
-                <label>Nombre de la tabla dinámica</label>
-                <input id="f-wf-pg-pivot" type="text" value="TablaDinámica3" placeholder="TablaDinámica3">
-              </div>
-              <div class="form-group" style="flex:1">
-                <label>Columnas mínimas libres</label>
-                <input id="f-wf-pg-gap" type="number" min="1" max="20" value="2">
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── REINTENTOS ──────────────────────────────────────── -->
-      <div class="section-label">REINTENTOS AUTOMÁTICOS</div>
-      <div style="display:flex;gap:12px;">
-        <div class="form-group" style="flex:1">
-          <label>Reintentos en caso de fallo</label>
-          <input id="f-retries" type="number" min="0" max="10" value="0" placeholder="0">
-          <span class="hint-sm">0 = sin reintentos automáticos</span>
-        </div>
-        <div class="form-group" style="flex:1">
-          <label>Espera entre reintentos (segundos)</label>
-          <input id="f-retry-delay" type="number" min="10" max="3600" value="60" placeholder="60">
         </div>
       </div>
 
@@ -1140,47 +886,11 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
   </div>
 </div>
 
-<!-- MODAL: SIMULAR WORKFLOW -->
-<div class="modal-overlay" id="modal-wf-test">
-  <div class="modal modal-sm">
-    <div class="modal-head">
-      <div class="modal-title"><i class="fa-solid fa-flask" style="color:#e67e22"></i>&nbsp; Simular ejecución del workflow</div>
-      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-wf-test')"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ejecuta el workflow ahora simulando un día específico. El log registrará qué acciones se realizaron.</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:6px" id="wf-test-opt-monday">
-          <input type="radio" name="wf-test-day" value="1" checked style="margin-top:3px">
-          <div>
-            <div style="font-weight:600"><i class="fa-solid fa-calendar-week" style="color:#e67e22"></i>&nbsp; Simular Lunes</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">Copia el archivo de la semana anterior (Sem N−1) → semana actual (Sem N) y lo refresca.</div>
-          </div>
-        </label>
-        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:6px" id="wf-test-opt-other">
-          <input type="radio" name="wf-test-day" value="3" style="margin-top:3px">
-          <div>
-            <div style="font-weight:600"><i class="fa-solid fa-calendar-day" style="color:var(--text2)"></i>&nbsp; Simular día no-lunes</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">Si <em>refresco diario</em> está activo: refresca el archivo de la semana actual. Si está apagado: no-op (confirma que el guard funciona).</div>
-          </div>
-        </label>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-wf-test')">Cancelar</button>
-      <button type="button" class="btn btn-primary" onclick="runWorkflowTest()"><i class="fa-solid fa-flask"></i> Ejecutar simulación</button>
-    </div>
-  </div>
-</div>
-
 <!-- MODAL: VER LOG -->
 <div class="modal-overlay" id="modal-log">
   <div class="modal log-modal">
     <div class="modal-head">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="modal-title" id="modal-log-title">Log de ejecución</div>
-        <span class="log-live-badge" id="log-live-badge" style="display:none"><span class="live-dot"></span>EN VIVO</span>
-      </div>
+      <div class="modal-title" id="modal-log-title">Log de ejecución</div>
       <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-log')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="modal-body">
@@ -1205,53 +915,6 @@ let logsPage = 1;
 let logStatusFilter = '';
 let currentLogRunId = null;
 let allTasks = [];
-let allUpcoming = [];
-let allReports = [];
-let allSchedReports = [];
-let _currentLogItems = [];
-let _runningExecsByTaskId = {};
-let _logNavTaskId = null;
-
-// ══════════════════════════════════════════════════════
-// GENERIC TABLE SORT UTILITY
-// ══════════════════════════════════════════════════════
-const _tableSorts = {};
-
-function tableSortBy(tableId, col, renderFn) {
-  const s = _tableSorts[tableId] || (_tableSorts[tableId] = { col, dir: 'asc' });
-  if (s.col === col) s.dir = s.dir === 'asc' ? 'desc' : 'asc';
-  else { s.col = col; s.dir = 'asc'; }
-  _updateTableSortHeaders(tableId);
-  renderFn();
-}
-
-function _updateTableSortHeaders(tableId) {
-  const s = _tableSorts[tableId];
-  if (!s) return;
-  const tbl = document.getElementById(tableId);
-  if (!tbl) return;
-  tbl.querySelectorAll('th[data-sort]').forEach(th => {
-    const col = th.dataset.sort;
-    const ic = th.querySelector('.sort-icon');
-    if (!ic) return;
-    if (s.col === col) { th.classList.add('sort-active'); ic.textContent = s.dir === 'asc' ? '↑' : '↓'; }
-    else               { th.classList.remove('sort-active'); ic.textContent = '↑'; }
-  });
-}
-
-function sortData(data, tableId) {
-  const s = _tableSorts[tableId];
-  if (!s || !s.col) return data;
-  const col = s.col, d = s.dir === 'asc' ? 1 : -1;
-  return [...data].sort((a, b) => {
-    let va = a[col] ?? '', vb = b[col] ?? '';
-    if (typeof va === 'string' && /\d{4}-\d{2}-\d{2}T/.test(va)) va = new Date(va).getTime();
-    if (typeof vb === 'string' && /\d{4}-\d{2}-\d{2}T/.test(vb)) vb = new Date(vb).getTime();
-    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * d;
-    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
-    return va < vb ? -d : va > vb ? d : 0;
-  });
-}
 
 // ══════════════════════════════════════════════════════
 // NAVIGATION
@@ -1277,11 +940,7 @@ function goPage(p) {
   currentPage = p;
   if (p === 'dashboard') loadDashboard();
   if (p === 'tasks') loadTasks();
-  if (p === 'logs') {
-    const statusSel = document.getElementById('log-filter-status');
-    if (statusSel) statusSel.value = logStatusFilter;
-    loadLogTaskFilter().then(() => loadLogs(1));
-  }
+  if (p === 'logs') { loadLogTaskFilter(); loadLogs(1); }
   if (p === 'reports') loadReports();
   if (p === 'schedreports') loadSchedReports();
 }
@@ -1314,13 +973,7 @@ function toast(msg, type = 'info') {
 // ══════════════════════════════════════════════════════
 async function loadDashboard() {
   try {
-    const [stats, tasks, runningData] = await Promise.all([
-      api('GET', '/stats'),
-      api('GET', '/tasks'),
-      api('GET', '/logs?page=1&page_size=100&status=running').catch(() => ({ items: [] })),
-    ]);
-    _runningExecsByTaskId = {};
-    (runningData.items || []).forEach(r => { _runningExecsByTaskId[r.task_id] = r.id; });
+    const [stats, tasks] = await Promise.all([api('GET', '/stats'), api('GET', '/tasks')]);
     document.getElementById('st-active').textContent  = stats.active_tasks;
     document.getElementById('st-total').textContent   = `de ${stats.total_tasks} total`;
     document.getElementById('st-ok').textContent      = stats.success_runs;
@@ -1334,12 +987,7 @@ async function loadDashboard() {
     document.getElementById('srv-label').textContent = 'Servicio activo';
 
     // Upcoming table
-    allUpcoming = tasks;
-    if (!_tableSorts['upcoming-table']) {
-      _tableSorts['upcoming-table'] = { col: 'next_run_at', dir: 'asc' };
-      _updateTableSortHeaders('upcoming-table');
-    }
-    renderUpcomingSorted();
+    renderUpcoming(tasks);
   } catch(e) {
     document.getElementById('srv-dot').style.background = 'var(--red)';
     document.getElementById('srv-label').textContent = 'Sin conexión';
@@ -1347,44 +995,24 @@ async function loadDashboard() {
   }
 }
 
-function renderUpcomingSorted() {
-  renderUpcoming(sortData(allUpcoming, 'upcoming-table'));
-}
-
 function renderUpcoming(tasks) {
   const body = document.getElementById('upcoming-body');
   if (!tasks.length) {
-    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-inbox"></i></div><div class="empty-title">Sin tareas</div><div class="empty-sub">Crea tu primera tarea con "+ Nueva tarea"</div></div></td></tr>`;
     return;
   }
-  const sorted = tasks;
+  const sorted = [...tasks].sort((a,b) => {
+    if (!a.next_run_at) return 1;
+    if (!b.next_run_at) return -1;
+    return new Date(a.next_run_at) - new Date(b.next_run_at);
+  });
   body.innerHTML = sorted.map(t => `
     <tr>
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(t.description)}</div></td>
-      <td style="text-align:center">
-        ${ (t.task_type || 'excel') === 'pipeline'
-          ? `<span title="Pipeline Access" style="color:#9b59b6;font-size:15px"><i class="fa-solid fa-database"></i><div style="font-size:9px;margin-top:2px">Access</div></span>`
-          : (t.task_type || 'excel') === 'workflow'
-            ? `<span title="Workflow Semanal" style="color:#e67e22;font-size:15px"><i class="fa-solid fa-calendar-week"></i><div style="font-size:9px;margin-top:2px">Workflow</div></span>`
-            : `<span title="Excel" style="color:#1d6f42;font-size:15px"><i class="fa-solid fa-file-excel"></i><div style="font-size:9px;margin-top:2px">Excel</div></span>`
-        }
-      </td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
-      <td style="font-family:var(--mono);font-size:12px">
-        ${fmtDate(t.last_run_at)}
-        ${t.last_run_status ? `<br>${runStatusBadge(t.last_run_status)}` : ''}
-      </td>
+      <td style="font-family:var(--mono);font-size:12px">${fmtDate(t.last_run_at)}</td>
       <td style="font-family:var(--mono);font-size:12px;color:var(--cyan)">${fmtDate(t.next_run_at)}</td>
-      <td style="text-align:center">
-        ${t.retry_count > 0
-          ? `<span style="color:orange;font-family:var(--mono);font-size:12px"><i class="fa-solid fa-rotate-right"></i> ${t.retry_count}/${t.max_retries}</span>`
-          : `<span style="color:var(--text3);font-family:var(--mono);font-size:12px">—</span>`
-        }
-      </td>
-      <td>
-        ${statusBadge(t.status)}
-        ${_runningExecsByTaskId[t.id] !== undefined ? `<br><span class="badge badge-running" onclick="goToRunningLog('${t.id}')">Ejecutando</span>` : ''}
-      </td>
+      <td>${statusBadge(t.status)}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-play"></i> Ahora</button>
       </td>
@@ -1397,21 +1025,14 @@ function renderUpcoming(tasks) {
 async function loadTasks() {
   try {
     allTasks = await api('GET', '/tasks');
-    if (!_tableSorts['tasks-table']) {
-      _tableSorts['tasks-table'] = { col: 'name', dir: 'asc' };
-      _updateTableSortHeaders('tasks-table');
-    }
-    applyTaskFilters();
+    renderTasks(allTasks);
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 function renderTasks(tasks) {
   const body = document.getElementById('tasks-body');
-  const total = allTasks.length;
-  const chip = document.getElementById('tasks-count');
-  if (chip) chip.textContent = tasks.length < total ? `${tasks.length} / ${total}` : `${total}`;
   if (!tasks.length) {
-    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-gear"></i></div><div class="empty-title">Sin tareas configuradas</div><div class="empty-sub">Haz clic en "+ Nueva" para comenzar</div></div></td></tr>`;
     return;
   }
   body.innerHTML = tasks.map(t => `
@@ -1419,7 +1040,6 @@ function renderTasks(tasks) {
       <td><strong>${esc(t.name)}</strong><div style="font-size:11px;color:var(--text2)">${esc(t.description)}</div></td>
       <td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text2)" title="${esc(t.file_path)}">${esc(t.file_path)}</td>
       <td><span class="schedule-pill">${schLabel(t)}</span></td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${fmtDate(t.last_run_at)}</td>
       <td style="font-size:12px">
         ${t.refresh_connections ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Conexiones&nbsp;' : ''}
         ${t.refresh_pivots ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Pivots' : ''}
@@ -1428,87 +1048,25 @@ function renderTasks(tasks) {
       <td>${statusBadge(t.status)}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i> Editar</button>
-          <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i> Copiar</button>
-          <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i> Ejecutar</button>
-          ${(t.task_type || 'excel') === 'workflow'
-            ? `<button class="btn btn-ghost btn-sm" onclick="openWfTest('${t.id}','${escJs(t.name)}')" title="Simular ejecución con día personalizado" style="color:#e67e22"><i class="fa-solid fa-flask"></i> Simular</button>`
-            : ''}
+          <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i></button>
           ${t.status==='active'
-            ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i> Pausar</button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i> Reanudar</button>`}
-          <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-trash"></i> Eliminar</button>
+            ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i></button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i></button>`}
+          <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}','${escJs(t.name)}')"><i class="fa-solid fa-trash"></i></button>
         </div>
       </td>
     </tr>`).join('');
 }
 
-// ── Task filters state ─────────────────────────────────
-let taskFilter = { search: '', status: '', type: '' };
-
-function setTaskFilter(key, value) {
-  taskFilter[key] = value;
-  const hasFilter = taskFilter.search || taskFilter.status || taskFilter.type;
-  document.getElementById('btn-clear-task-filters').style.display = hasFilter ? '' : 'none';
-  applyTaskFilters();
+function filterTasks(q) {
+  const f = allTasks.filter(t => t.name.toLowerCase().includes(q.toLowerCase()) || t.file_path.toLowerCase().includes(q.toLowerCase()));
+  renderTasks(f);
 }
-
-function clearTaskFilters() {
-  taskFilter.search = ''; taskFilter.status = ''; taskFilter.type = '';
-  document.getElementById('task-search').value = '';
-  document.getElementById('task-filter-status').value = '';
-  document.getElementById('task-filter-type').value = '';
-  document.getElementById('btn-clear-task-filters').style.display = 'none';
-  applyTaskFilters();
-}
-
-function sortTasksBy(col) { tableSortBy('tasks-table', col, applyTaskFilters); }
-
-function applyTaskFilters() {
-  let tasks = [...allTasks];
-  if (taskFilter.search) {
-    const q = taskFilter.search.toLowerCase();
-    tasks = tasks.filter(t =>
-      t.name.toLowerCase().includes(q) ||
-      (t.file_path || '').toLowerCase().includes(q) ||
-      (t.description || '').toLowerCase().includes(q)
-    );
-  }
-  if (taskFilter.status) tasks = tasks.filter(t => t.status === taskFilter.status);
-  if (taskFilter.type)   tasks = tasks.filter(t => (t.task_type || 'excel') === taskFilter.type);
-  renderTasks(sortData(tasks, 'tasks-table'));
-}
-
-// legacy shims (mantiene compatibilidad si alguien las llama directamente)
-function filterTasks(q)      { setTaskFilter('search', q); }
-function filterTaskStatus(s) { setTaskFilter('status', s); }
-
-function exportTasks() {
-  const a = document.createElement('a');
-  a.href = API + '/tasks/export';
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  toast('Descargando exportación…', 'info');
-}
-
-async function importTasks(input) {
-  const file = input.files[0];
-  if (!file) return;
-  input.value = '';
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const r = await fetch(API + '/tasks/import', { method: 'POST', body: fd });
-    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
-    const data = await r.json();
-    toast(`Importadas ${data.imported} tarea(s)${data.skipped ? `, ${data.skipped} omitida(s)` : ''}.`, data.imported ? 'success' : 'info');
-    if (data.errors && data.errors.length) {
-      data.errors.forEach(e => toast(`Omitida "${e.name}": ${e.reason}`, 'error'));
-    }
-    await loadTasks();
-  } catch(e) { toast('Error importando: ' + e.message, 'error'); }
+function filterTaskStatus(s) {
+  const f = s ? allTasks.filter(t => t.status === s) : allTasks;
+  renderTasks(f);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1519,7 +1077,6 @@ async function loadLogTaskFilter() {
   const sel = document.getElementById('log-filter-task');
   sel.innerHTML = '<option value="">Todas las tareas</option>' +
     tasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
-  if (_logNavTaskId) { sel.value = _logNavTaskId; _logNavTaskId = null; }
 }
 
 async function loadLogs(page = 1) {
@@ -1530,48 +1087,23 @@ async function loadLogs(page = 1) {
   if (logStatusFilter) url += `&status=${logStatusFilter}`;
   try {
     const data = await api('GET', url);
-    _currentLogItems = data.items;
-    if (!_tableSorts['logs-table']) {
-      _tableSorts['logs-table'] = { col: 'started_at', dir: 'desc' };
-      _updateTableSortHeaders('logs-table');
-    }
-    const total = data.total;
-    const pages = Math.ceil(total / 20);
-    document.getElementById('logs-info').textContent = `${total} registros — Pág. ${page}/${pages || 1}`;
-    document.getElementById('btn-prev').disabled = page <= 1;
-    document.getElementById('btn-next').disabled = page >= pages;
-    _rerenderCurrentLogs();
-  } catch(e) { toast('Error cargando logs: ' + e.message, 'error'); }
-}
-
-function _rerenderCurrentLogs() {
-  const body = document.getElementById('logs-body');
-  const items = sortData(_currentLogItems, 'logs-table');
-  if (!items.length) {
-    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><div class="empty-sub">Sin ejecuciones registradas</div></div></td></tr>`;
-    return;
-  }
-  body.innerHTML = items.map(r => `
+    const body = document.getElementById('logs-body');
+    if (!data.items.length) {
+      body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div><div class="empty-sub">Sin ejecuciones registradas</div></div></td></tr>`;
+    } else {
+      body.innerHTML = data.items.map(r => `
         <tr>
           <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
           <td><strong>${esc(r.task_name)}</strong></td>
           <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
-          <td style="font-family:var(--mono);font-size:12px">${fmtDuration(r.duration_s)}</td>
-          <td style="text-align:center">
-            ${r.retry_attempt > 0
-              ? `<span style="color:orange;font-family:var(--mono);font-size:12px"><i class="fa-solid fa-rotate-right"></i> ${r.retry_attempt}</span>`
-              : `<span style="color:var(--text3);font-family:var(--mono);font-size:12px">—</span>`
-            }
-          </td>
+          <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
           <td style="font-family:var(--mono);font-size:12px">${r.connections ?? 0}</td>
           <td style="font-family:var(--mono);font-size:12px">
             ${r.pivots_ok > 0 ? `<span style="color:var(--green)">${r.pivots_ok} <i class="fa-solid fa-check"></i></span>` : ''}
             ${r.pivots_err > 0 ? `<span style="color:var(--red)"> ${r.pivots_err} <i class="fa-solid fa-xmark"></i></span>` : ''}
             ${r.pivots_ok === 0 && r.pivots_err === 0 ? '—' : ''}
           </td>
-          <td>
-            ${runStatusBadge(r.status)}
-          </td>
+          <td>${runStatusBadge(r.status)}</td>
           <td>
             <div style="display:flex;gap:6px">
               ${r.log_file ? `<button class="btn btn-ghost btn-sm" onclick="viewLog(${r.id},'${escJs(r.task_name)}')" ><i class="fa-solid fa-eye"></i> Ver</button>` : ''}
@@ -1579,66 +1111,43 @@ function _rerenderCurrentLogs() {
             </div>
           </td>
         </tr>`).join('');
+    }
+    const total = data.total;
+    const pages = Math.ceil(total / 20);
+    document.getElementById('logs-info').textContent = `${total} registros — Pág. ${page}/${pages || 1}`;
+    document.getElementById('btn-prev').disabled = page <= 1;
+    document.getElementById('btn-next').disabled = page >= pages;
+  } catch(e) { toast('Error cargando logs: ' + e.message, 'error'); }
 }
 
-async function clearLogs(mode = 'all') {
-  document.getElementById('clear-logs-menu')?.classList.remove('open');
+async function clearLogs() {
   const taskId = document.getElementById('log-filter-task').value;
-  let scope;
-  if (mode === 'errors') {
-    scope = taskId ? 'las ejecuciones fallidas de esta tarea' : 'todas las ejecuciones fallidas';
-  } else {
-    scope = taskId ? 'las ejecuciones de esta tarea' : 'TODO el historial de ejecuciones';
-  }
+  const scope = taskId ? 'las ejecuciones de esta tarea' : 'TODO el historial de ejecuciones';
   if (!confirm(`¿Seguro que deseas eliminar ${scope}?\nEsta acción no se puede deshacer.`)) return;
   try {
-    let url = mode === 'errors' ? '/logs?status=failed' : '/logs';
-    if (taskId) url += (url.includes('?') ? '&' : '?') + `task_id=${taskId}`;
+    const url = taskId ? `/logs?task_id=${taskId}` : '/logs';
     const data = await api('DELETE', url);
     toast(`${data.deleted} registros eliminados`, 'success');
     loadLogs(1);
   } catch(e) { toast('Error al limpiar historial: ' + e.message, 'error'); }
 }
 
-function toggleClearMenu(e) {
-  e.stopPropagation();
-  const menu = document.getElementById('clear-logs-menu');
-  menu.classList.toggle('open');
-  if (menu.classList.contains('open')) {
-    setTimeout(() => document.addEventListener('click', closeClearMenu, { once: true }), 0);
-  }
-}
-
-function closeClearMenu() {
-  document.getElementById('clear-logs-menu')?.classList.remove('open');
-}
-
 async function loadReports() {
   try {
     const data = await api('GET', '/logs?page=1&page_size=100');
-    allReports = data.items.filter(r => r.log_file);
-    if (!_tableSorts['reports-table']) {
-      _tableSorts['reports-table'] = { col: 'started_at', dir: 'desc' };
-      _updateTableSortHeaders('reports-table');
+    const body = document.getElementById('reports-body');
+    const withLogs = data.items.filter(r => r.log_file);
+    if (!withLogs.length) {
+      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin archivos de log disponibles</div></div></td></tr>`;
+      return;
     }
-    renderReports();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
-}
-
-function renderReports() {
-  const body = document.getElementById('reports-body');
-  const items = sortData(allReports, 'reports-table');
-  if (!items.length) {
-    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin archivos de log disponibles</div></div></td></tr>`;
-    return;
-  }
-  body.innerHTML = items.map(r => `
+    body.innerHTML = withLogs.map(r => `
       <tr>
         <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">#${r.id}</td>
         <td><strong>${esc(r.task_name)}</strong></td>
         <td style="font-family:var(--mono);font-size:12px">${fmtDate(r.started_at)}</td>
         <td>${runStatusBadge(r.status)}</td>
-        <td style="font-family:var(--mono);font-size:12px">${fmtDuration(r.duration_s)}</td>
+        <td style="font-family:var(--mono);font-size:12px">${r.duration_s != null ? r.duration_s + 's' : '—'}</td>
         <td style="font-size:12px;color:var(--red);max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.error_msg||'')}">${r.error_msg ? r.error_msg.slice(0,80) + '…' : '—'}</td>
         <td>
           <div style="display:flex;gap:6px">
@@ -1647,71 +1156,26 @@ function renderReports() {
           </div>
         </td>
       </tr>`).join('');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════
 // LOG MODAL
 // ══════════════════════════════════════════════════════
-let _logPollTimer = null;
-let _logPollOffset = 0;
-
-function _logColorLine(l) {
-  const cls = l.includes('ERROR') ? 'log-line-error' : l.includes('WARNING') ? 'log-line-warn' : l.includes('DEBUG') ? 'log-line-debug' : 'log-line-info';
-  return `<span class="${cls}">${esc(l)}</span>`;
-}
-
-function _logAppend(text) {
-  const el = document.getElementById('log-content');
-  const lines = text.split('\n');
-  const html = lines.map(_logColorLine).join('\n');
-  if (el.dataset.empty === '1') { el.innerHTML = html; el.dataset.empty = '0'; }
-  else { el.innerHTML += html; }
-  el.scrollTop = el.scrollHeight;
-}
-
-function _stopLogPoll() {
-  if (_logPollTimer) { clearTimeout(_logPollTimer); _logPollTimer = null; }
-  document.getElementById('log-live-badge').style.display = 'none';
-}
-
-async function _pollLog(runId) {
-  try {
-    const data = await api('GET', `/logs/${runId}/tail?offset=${_logPollOffset}`);
-    if (data.content) _logAppend(data.content);
-    _logPollOffset = data.offset;
-    if (data.status === 'running') {
-      _logPollTimer = setTimeout(() => _pollLog(runId), 1500);
-    } else {
-      _stopLogPoll();
-    }
-  } catch(e) {
-    _stopLogPoll();
-  }
-}
-
 async function viewLog(runId, taskName) {
-  _stopLogPoll();
   currentLogRunId = runId;
-  _logPollOffset = 0;
   document.getElementById('modal-log-title').textContent = `Log — ${taskName} #${runId}`;
-  const el = document.getElementById('log-content');
-  el.textContent = 'Cargando…';
-  el.dataset.empty = '1';
-  document.getElementById('log-live-badge').style.display = 'none';
+  document.getElementById('log-content').textContent = 'Cargando…';
   document.getElementById('modal-log').classList.add('open');
   try {
-    // Primer fetch: carga contenido existente y comprueba si sigue en ejecución
-    const data = await api('GET', `/logs/${runId}/tail?offset=0`);
-    el.dataset.empty = '1';
-    if (data.content) _logAppend(data.content);
-    else { el.textContent = '(sin contenido aún)'; el.dataset.empty = '0'; }
-    _logPollOffset = data.offset;
-    if (data.status === 'running') {
-      document.getElementById('log-live-badge').style.display = 'inline-flex';
-      _logPollTimer = setTimeout(() => _pollLog(runId), 1500);
-    }
+    const data = await api('GET', `/logs/${runId}/content`);
+    const lines = data.content.split('\n');
+    document.getElementById('log-content').innerHTML = lines.map(l => {
+      const cls = l.includes('ERROR') ? 'log-line-error' : l.includes('WARNING') ? 'log-line-warn' : l.includes('DEBUG') ? 'log-line-debug' : 'log-line-info';
+      return `<span class="${cls}">${esc(l)}</span>`;
+    }).join('\n');
   } catch(e) {
-    el.textContent = 'No se pudo cargar el log: ' + e.message;
+    document.getElementById('log-content').textContent = 'No se pudo cargar el log: ' + e.message;
   }
 }
 
@@ -1745,8 +1209,6 @@ function openNewTask() {
   document.getElementById('f-pivots').checked = true;
   document.getElementById('f-save').checked = true;
   document.getElementById('f-visible').checked = false;
-  document.getElementById('f-retries').value = 0;
-  document.getElementById('f-retry-delay').value = 60;
   document.getElementById('notif-section').style.display = 'none';
   document.getElementById('notif-rules-list').innerHTML = '';
   setTaskType('excel');
@@ -1765,8 +1227,6 @@ async function copyTask(id) {
   document.getElementById('f-pivots').checked = t.refresh_pivots;
   document.getElementById('f-save').checked = t.save_on_success;
   document.getElementById('f-visible').checked = t.excel_visible;
-  document.getElementById('f-retries').value = t.max_retries ?? 0;
-  document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
   const cfg = t.schedule_config || {};
   if (t.schedule_type === 'once_daily') {
@@ -1794,41 +1254,7 @@ async function copyTask(id) {
 function setTaskType(type) {
   document.getElementById('section-excel').style.display    = (type === 'excel')    ? '' : 'none';
   document.getElementById('section-pipeline').style.display = (type === 'pipeline') ? '' : 'none';
-  document.getElementById('section-workflow').style.display = (type === 'workflow') ? '' : 'none';
   document.querySelectorAll('input[name="f-task-type"]').forEach(r => { r.checked = (r.value === type); });
-}
-
-// ══════════════════════════════════════════════════════
-// BROWSE FILE (selector nativo de Windows)
-// ══════════════════════════════════════════════════════
-async function browseFile(targetId, filterType = 'any') {
-  const btn = document.querySelector(`button[onclick="browseFile('${targetId}','${filterType}')"]`);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
-  try {
-    const data = await api('GET', `/browse-file?filter=${filterType}`);
-    if (data && data.path) {
-      document.getElementById(targetId).value = data.path;
-    }
-  } catch (e) {
-    toast('No se pudo abrir el selector de archivos', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
-  }
-}
-
-async function browseFolder(targetId) {
-  const btn = document.querySelector(`button[onclick="browseFolder('${targetId}')"]`);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
-  try {
-    const data = await api('GET', '/browse-folder');
-    if (data && data.path) {
-      document.getElementById(targetId).value = data.path;
-    }
-  } catch (e) {
-    toast('No se pudo abrir el selector de carpetas', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
-  }
 }
 
 async function openEditTask(id) {
@@ -1850,27 +1276,6 @@ async function openEditTask(id) {
     document.getElementById('f-post-macros').value = (pc.post_import_macros || []).join('\n');
     document.getElementById('f-compact').checked = pc.compact_before_import !== false;
     document.getElementById('f-access-visible').checked = !!pc.access_visible;
-  } else if (taskType === 'workflow') {
-    const pc = t.pipeline_config || {};
-    document.getElementById('f-wf-folder').value         = pc.folder || '';
-    document.getElementById('f-wf-patterns').value       = (pc.file_patterns || []).join('\n');
-    document.getElementById('f-wf-padding').value        = pc.week_padding ?? 2;
-    document.getElementById('f-wf-daily-refresh').checked = !!pc.daily_refresh;
-    document.getElementById('f-wf-fail-missing').checked  = pc.fail_if_source_missing !== false;
-    document.getElementById('f-wf-visible').checked       = !!pc.excel_visible;
-    document.getElementById('f-wf-timeout').value         = pc.refresh_timeout ?? 300;
-    const pg0 = (pc.pivot_guards || [])[0];
-    document.getElementById('f-wf-pg-enabled').checked = !!pg0;
-    document.getElementById('f-wf-pg-fields').style.display = pg0 ? '' : 'none';
-    if (pg0) {
-      document.getElementById('f-wf-pg-sheet').value = pg0.sheet ?? 'Venta';
-      document.getElementById('f-wf-pg-pivot').value = pg0.pivot ?? 'TablaDinámica3';
-      document.getElementById('f-wf-pg-gap').value   = pg0.min_gap ?? 2;
-    } else {
-      document.getElementById('f-wf-pg-sheet').value = 'Venta';
-      document.getElementById('f-wf-pg-pivot').value = 'TablaDinámica3';
-      document.getElementById('f-wf-pg-gap').value   = 2;
-    }
   } else {
     document.getElementById('f-path').value = t.file_path;
     document.getElementById('f-conns').checked = t.refresh_connections;
@@ -1878,8 +1283,6 @@ async function openEditTask(id) {
     document.getElementById('f-save').checked = t.save_on_success;
     document.getElementById('f-visible').checked = t.excel_visible;
   }
-  document.getElementById('f-retries').value = t.max_retries ?? 0;
-  document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
   const cfg = t.schedule_config || {};
   if (t.schedule_type === 'once_daily') {
@@ -1925,50 +1328,7 @@ async function saveTask() {
   }
 
   try {
-    if (taskType === 'workflow') {
-      const folder = document.getElementById('f-wf-folder').value.trim();
-      if (!folder) { toast('La carpeta base es obligatoria', 'error'); return; }
-      const patterns = document.getElementById('f-wf-patterns').value.split('\n').map(l => l.trim()).filter(Boolean);
-      if (!patterns.length) { toast('Al menos un patrón de nombre es obligatorio', 'error'); return; }
-      const invalidPat = patterns.find(p => !p.includes('{week}'));
-      if (invalidPat) { toast(`El patrón "${invalidPat}" no contiene {week}`, 'error'); return; }
-      const pgEnabled = document.getElementById('f-wf-pg-enabled').checked;
-      const workflowCfg = {
-        folder,
-        file_patterns: patterns,
-        week_padding:          +document.getElementById('f-wf-padding').value,
-        daily_refresh:          document.getElementById('f-wf-daily-refresh').checked,
-        fail_if_source_missing: document.getElementById('f-wf-fail-missing').checked,
-        excel_visible:          document.getElementById('f-wf-visible').checked,
-        refresh_timeout:       +document.getElementById('f-wf-timeout').value,
-        pivot_guards: pgEnabled ? [{
-          sheet:   document.getElementById('f-wf-pg-sheet').value.trim() || 'Venta',
-          pivot:   document.getElementById('f-wf-pg-pivot').value.trim() || 'TablaDinámica3',
-          min_gap: +document.getElementById('f-wf-pg-gap').value || 2,
-        }] : [],
-      };
-      if (editingTaskId) {
-        await api('PUT', `/tasks/${editingTaskId}`, {
-          name,
-          description: document.getElementById('f-desc').value,
-          schedule_type, schedule_config,
-          pipeline_config: { workflow_type: 'weekly_excel_copy', ...workflowCfg },
-          max_retries:   +document.getElementById('f-retries').value,
-          retry_delay_s: +document.getElementById('f-retry-delay').value,
-        });
-        toast('Workflow actualizado', 'success');
-      } else {
-        await api('POST', '/tasks/workflow/weekly-excel-copy', {
-          name,
-          description: document.getElementById('f-desc').value,
-          schedule_type, schedule_config,
-          ...workflowCfg,
-          max_retries:   +document.getElementById('f-retries').value,
-          retry_delay_s: +document.getElementById('f-retry-delay').value,
-        });
-        toast('Workflow creado', 'success');
-      }
-    } else if (taskType === 'pipeline') {
+    if (taskType === 'pipeline') {
       const accessDb = document.getElementById('f-access-db').value.trim();
       if (!accessDb) { toast('La ruta de la BD Access es obligatoria', 'error'); return; }
 
@@ -1994,8 +1354,6 @@ async function saveTask() {
           description: document.getElementById('f-desc').value,
           schedule_type, schedule_config,
           pipeline_config: pipelineCfg,
-          max_retries:   +document.getElementById('f-retries').value,
-          retry_delay_s: +document.getElementById('f-retry-delay').value,
         });
         toast('Pipeline actualizado', 'success');
       } else {
@@ -2005,8 +1363,6 @@ async function saveTask() {
           schedule_type, schedule_config,
           ...pipelineCfg,
           excel_files: excelLines.map(p => ({ path: p, visible: false })),
-          max_retries:   +document.getElementById('f-retries').value,
-          retry_delay_s: +document.getElementById('f-retry-delay').value,
         });
         toast('Pipeline creado', 'success');
       }
@@ -2023,8 +1379,6 @@ async function saveTask() {
         refresh_pivots:      document.getElementById('f-pivots').checked,
         save_on_success:     document.getElementById('f-save').checked,
         excel_visible:       document.getElementById('f-visible').checked,
-        max_retries:         +document.getElementById('f-retries').value,
-        retry_delay_s:       +document.getElementById('f-retry-delay').value,
       };
 
       if (editingTaskId) {
@@ -2046,28 +1400,6 @@ async function runNow(id, name) {
   try {
     await api('POST', `/tasks/${id}/run-now`);
     toast(`"${name}" iniciada`, 'info');
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
-}
-
-// ── Simulación de workflow ─────────────────────────────
-let _wfTestTaskId = null;
-let _wfTestTaskName = null;
-
-function openWfTest(id, name) {
-  _wfTestTaskId   = id;
-  _wfTestTaskName = name;
-  // Reset a Lunes por defecto
-  document.querySelector('input[name="wf-test-day"][value="1"]').checked = true;
-  document.getElementById('modal-wf-test').classList.add('open');
-}
-
-async function runWorkflowTest() {
-  const weekday = +document.querySelector('input[name="wf-test-day"]:checked').value;
-  try {
-    await api('POST', `/tasks/${_wfTestTaskId}/test-run`, { force_weekday: weekday });
-    const label = weekday === 1 ? 'Simulación Lunes' : 'Simulación día normal';
-    toast(`"${_wfTestTaskName}" — ${label} iniciada`, 'info');
-    closeModal('modal-wf-test');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -2103,12 +1435,9 @@ function setSchTab(tab) {
 // ══════════════════════════════════════════════════════
 // MODAL HELPERS
 // ══════════════════════════════════════════════════════
-function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
-  if (id === 'modal-log') _stopLogPoll();
-}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  if (o.id === 'modal-task' || o.id === 'modal-notif-rule' || o.id === 'modal-wf-test') return; // no cerrar al hacer click fuera
+  if (o.id === 'modal-task' || o.id === 'modal-notif-rule') return; // no cerrar al hacer click fuera
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
 
@@ -2122,16 +1451,6 @@ function fmtDate(d) {
   if (!d) return '<span style="color:var(--text3)">—</span>';
   const dt = new Date(d);
   return dt.toLocaleString('es-PE', { dateStyle:'short', timeStyle:'short' });
-}
-
-function fmtDuration(s) {
-  if (s == null) return '—';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.round(s % 60);
-  if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`;
-  if (m > 0) return `${m}m ${String(sec).padStart(2,'0')}s`;
-  return `${sec}s`;
 }
 
 function statusBadge(s) {
@@ -2171,58 +1490,15 @@ async function stopRun(runId) {
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
-function goToRunningLog(taskId) {
-  logStatusFilter = 'running';
-  _logNavTaskId = taskId;
-  goPage('logs');
-}
-
 // ══════════════════════════════════════════════════════
-// REFRESH ALL — auto cada 3 minutos
+// REFRESH ALL
 // ══════════════════════════════════════════════════════
-const AUTO_REFRESH_MS = 3 * 60 * 1000;
-let _autoRefreshTimer = null;
-
-function _updateRefreshInfo() {
-  const now  = new Date();
-  const next = new Date(now.getTime() + AUTO_REFRESH_MS);
-  const fmtTime = d => d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  document.getElementById('refresh-last').textContent =
-    'Actualizado: ' + now.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' });
-  document.getElementById('refresh-next').textContent =
-    'Próx. auto: ' + fmtTime(next);
-}
-
-function _animateRefreshBtn() {
-  const btn = document.getElementById('btn-refresh');
-  btn.classList.remove('btn-spinning');
-  void btn.offsetWidth; // reflow para reiniciar la animación
-  btn.classList.add('btn-spinning');
-  setTimeout(() => btn.classList.remove('btn-spinning'), 700);
-}
-
-function _scheduleAutoRefresh() {
-  if (_autoRefreshTimer) clearTimeout(_autoRefreshTimer);
-  _autoRefreshTimer = setTimeout(() => {
-    _animateRefreshBtn();
-    _doRefresh(true);
-  }, AUTO_REFRESH_MS);
-}
-
-function _doRefresh(silent) {
-  if (currentPage === 'dashboard')    loadDashboard();
-  else if (currentPage === 'tasks')   loadTasks();
-  else if (currentPage === 'logs')    loadLogs(logsPage);
-  else if (currentPage === 'reports') loadReports();
-  else if (currentPage === 'schedreports') loadSchedReports();
-  _updateRefreshInfo();
-  _scheduleAutoRefresh();
-  if (!silent) toast('Datos actualizados', 'info');
-}
-
 function refreshAll() {
-  _animateRefreshBtn();
-  _doRefresh(false);
+  if (currentPage === 'dashboard') loadDashboard();
+  if (currentPage === 'tasks') loadTasks();
+  if (currentPage === 'logs') loadLogs(logsPage);
+  if (currentPage === 'reports') loadReports();
+  toast('Datos actualizados', 'info');
 }
 
 // ══════════════════════════════════════════════════════
@@ -2326,24 +1602,17 @@ let currentSrTab = 'once';
 
 async function loadSchedReports() {
   try {
-    allSchedReports = await api('GET', '/reports');
-    if (!_tableSorts['schedreports-table']) {
-      _tableSorts['schedreports-table'] = { col: 'name', dir: 'asc' };
-      _updateTableSortHeaders('schedreports-table');
+    const reports = await api('GET', '/reports');
+    const body = document.getElementById('schedreports-body');
+    if (!reports.length) {
+      body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin reportes programados. Crea uno con "Nuevo reporte".</div></div></td></tr>`;
+      return;
     }
-    renderSchedReports();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
-}
-
-function renderSchedReports() {
-  const body = document.getElementById('schedreports-body');
-  const reports = sortData(allSchedReports, 'schedreports-table');
-  if (!reports.length) {
-    body.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-sub">Sin reportes programados. Crea uno con "Nuevo reporte".</div></div></td></tr>`;
-    return;
-  }
-  body.innerHTML = reports.map(r => {
+    body.innerHTML = reports.map(r => {
       const chIcon = r.channel === 'email' ? '📧' : '💬';
+      const recip = r.channel === 'email'
+        ? (r.recipients || []).join(', ')
+        : (r.recipients || []).map(x => `+${x.phone}`).join(', ');
       const taskLabel = r.task_ids ? `${r.task_ids.length} tarea(s)` : 'Todas';
       return `<tr>
         <td><strong>${esc(r.name)}</strong></td>
@@ -2360,6 +1629,7 @@ function renderSchedReports() {
         </td>
       </tr>`;
     }).join('');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function openNewSchedReport() {
@@ -2474,7 +1744,8 @@ async function deleteSchedReport(id, name) {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
-_doRefresh(true);
+loadDashboard();
+setInterval(() => { if (currentPage === 'dashboard') loadDashboard(); }, 30000);
 </script>
 </body>
 </html>

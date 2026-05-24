@@ -54,13 +54,20 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
     def run(self, config: dict, logger: logging.Logger) -> EngineResult:
         t0 = time.time()
 
-        folder        = resolve_path(config.get("folder", ""))
-        file_patterns = config.get("file_patterns", [])
-        week_padding  = int(config.get("week_padding", 2))
-        daily_refresh = bool(config.get("daily_refresh", False))
-        fail_missing  = bool(config.get("fail_if_source_missing", True))
-        excel_visible = bool(config.get("excel_visible", False))
-        refresh_timeout = int(config.get("refresh_timeout", 300))
+        folder            = resolve_path(config.get("folder", ""))
+        file_patterns     = config.get("file_patterns", [])
+        week_padding      = int(config.get("week_padding", 2))
+        daily_refresh     = bool(config.get("daily_refresh", False))
+        fail_missing      = bool(config.get("fail_if_source_missing", True))
+        excel_visible     = bool(config.get("excel_visible", False))
+        refresh_timeout   = int(config.get("refresh_timeout", 300))
+        pivot_max_retries = int(config.get("pivot_max_retries", 3))
+        pivot_retry_delay = int(config.get("pivot_retry_delay_s", 60))
+        # skip_pivots llega como lista de dicts desde config_overrides (JSON serializable)
+        skip_pivots = {
+            (d["sheet"], d["pivot"])
+            for d in config.get("skip_pivots", [])
+        }
 
         today    = datetime.now()
         cal      = today.isocalendar()
@@ -85,9 +92,10 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
             return EngineResult(success=True, duration_s=round(time.time() - t0, 2))
 
         any_failed = False
+        all_pivots_completed: list[dict] = []
 
         for pattern in file_patterns:
-            ok = self._process_pattern(
+            pat_result = self._process_pattern(
                 pattern=pattern,
                 folder=folder,
                 week_padding=week_padding,
@@ -98,10 +106,13 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
                 pivot_guards=config.get("pivot_guards", []),
+                pivot_max_retries=pivot_max_retries,
+                pivot_retry_delay=pivot_retry_delay,
+                skip_pivots=skip_pivots,
                 logger=logger,
-                t0=t0,
             )
-            if not ok:
+            all_pivots_completed.extend(pat_result.pivots_completed)
+            if not pat_result.success:
                 any_failed = True
 
         duration = round(time.time() - t0, 2)
@@ -110,8 +121,9 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 success=False,
                 error_msg="Uno o más archivos fallaron. Revisa el log para detalles.",
                 duration_s=duration,
+                pivots_completed=all_pivots_completed,
             )
-        return EngineResult(success=True, duration_s=duration)
+        return EngineResult(success=True, duration_s=duration, pivots_completed=all_pivots_completed)
 
     # ── Lógica por patrón ─────────────────────────────────────────────────────
 
@@ -127,10 +139,12 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         excel_visible: bool,
         refresh_timeout: int,
         pivot_guards: list,
+        pivot_max_retries: int,
+        pivot_retry_delay: int,
+        skip_pivots: set,
         logger: logging.Logger,
-        t0: float,
-    ) -> bool:
-        """Procesa un patrón de archivo. Retorna True si tuvo éxito."""
+    ) -> EngineResult:
+        """Procesa un patrón de archivo. Retorna EngineResult."""
         cur_name = _format_week(pattern, cur_week, week_padding)
         cur_path = Path(folder) / cur_name
 
@@ -146,6 +160,9 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
                 pivot_guards=pivot_guards,
+                pivot_max_retries=pivot_max_retries,
+                pivot_retry_delay=pivot_retry_delay,
+                skip_pivots=skip_pivots,
                 logger=logger,
             )
         else:
@@ -158,6 +175,9 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
+                pivot_max_retries=pivot_max_retries,
+                pivot_retry_delay=pivot_retry_delay,
+                skip_pivots=skip_pivots,
                 logger=logger,
             )
 
@@ -173,8 +193,11 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         excel_visible: bool,
         refresh_timeout: int,
         pivot_guards: list,
+        pivot_max_retries: int,
+        pivot_retry_delay: int,
+        skip_pivots: set,
         logger: logging.Logger,
-    ) -> bool:
+    ) -> EngineResult:
         """Lunes: copia Sem N-1 → Sem N (si no existe) y refresca."""
         # Calcular semana anterior
         today = datetime.now()
@@ -203,20 +226,19 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 )
                 if fail_missing:
                     logger.error(msg)
-                    return False
+                    return EngineResult(success=False, error_msg=msg)
                 else:
                     logger.warning(msg + " — se omite este archivo (fail_if_source_missing=False).")
-                    return True
+                    return EngineResult(success=True)
 
             # Copiar
             try:
                 shutil.copy2(str(prev_path), str(cur_path))
                 logger.info(f"[WeeklyExcelCopy] Copia completada: '{prev_name}' → '{cur_name}'.")
             except Exception:
-                logger.error(
-                    f"[WeeklyExcelCopy] Error al copiar '{prev_name}':\n{traceback.format_exc()}"
-                )
-                return False
+                err = traceback.format_exc()
+                logger.error(f"[WeeklyExcelCopy] Error al copiar '{prev_name}':\n{err}")
+                return EngineResult(success=False, error_msg=err)
 
         # Refrescar el archivo de la semana actual
         if pivot_guards:
@@ -227,6 +249,9 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
             fail_missing=fail_missing,
             excel_visible=excel_visible,
             refresh_timeout=refresh_timeout,
+            pivot_max_retries=pivot_max_retries,
+            pivot_retry_delay=pivot_retry_delay,
+            skip_pivots=skip_pivots,
             logger=logger,
         )
 
@@ -237,17 +262,20 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         fail_missing: bool,
         excel_visible: bool,
         refresh_timeout: int,
+        pivot_max_retries: int,
+        pivot_retry_delay: int,
+        skip_pivots: set,
         logger: logging.Logger,
-    ) -> bool:
-        """Refresca un archivo Excel con ExcelCOMUpdater. Retorna True si tuvo éxito."""
+    ) -> EngineResult:
+        """Refresca un archivo Excel con ExcelCOMUpdater. Retorna EngineResult."""
         if not Path(file_path).exists():
             msg = f"[WeeklyExcelCopy] Archivo no encontrado para refresco: '{label}' ({file_path})"
             if fail_missing:
                 logger.error(msg)
-                return False
+                return EngineResult(success=False, error_msg=msg)
             else:
                 logger.warning(msg + " — se omite (fail_if_source_missing=False).")
-                return True
+                return EngineResult(success=True)
 
         logger.info(f"[WeeklyExcelCopy] Refrescando '{label}'...")
         cfg = EngineConfig(
@@ -262,15 +290,16 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
             lock_retry=5,
             lock_max_retries=0,
             stop_event=threading.Event(),
+            pivot_max_retries=pivot_max_retries,
+            pivot_retry_delay_s=pivot_retry_delay,
+            skip_pivots=skip_pivots,
         )
         try:
             result = ExcelCOMUpdater(cfg, logger).run()
         except Exception:
-            logger.error(
-                f"[WeeklyExcelCopy] Error inesperado al refrescar '{label}':\n"
-                f"{traceback.format_exc()}"
-            )
-            return False
+            err = traceback.format_exc()
+            logger.error(f"[WeeklyExcelCopy] Error inesperado al refrescar '{label}':\n{err}")
+            return EngineResult(success=False, error_msg=err)
 
         if result.success:
             logger.info(
@@ -281,7 +310,7 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
             logger.error(
                 f"[WeeklyExcelCopy] Error al refrescar '{label}': {result.error_msg}"
             )
-        return result.success
+        return result
 
     # ── Expansión automática de tabla dinámica ────────────────────────────────
 
