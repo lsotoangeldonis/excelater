@@ -24,6 +24,59 @@
 
 ---
 
+## 2026-05-24 — Pipeline Access ETL: hardening + paso 8 (post-refresh tableros)
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** el `AccessPipelineRunner` no replicaba fielmente el manual de actualización (Sneakers / Non-Sneakers). Detectados:
+- **Bug**: `_refresh_excel_file` invocaba `ExcelCOMUpdater(...).run()` directo y se saltaba `run_engine()`, perdiendo hidratación OneDrive + `wait_for_file` que el flujo Excel-puro sí tiene.
+- **Gap orden**: Compact & Repair se ejecutaba ANTES del pre_import_macro "Elimina Cubos", compactando datos viejos. El manual hace `Elimina Cubos → Compact → Importar`.
+- **Gap paso 8**: el pipeline terminaba en `post_import_macros`. El paso 8 manual ("Actualizar Tableros, Reportes y Herramientas") nunca se ejecutaba, dejando los `.xlsm` consumidores con datos viejos hasta refresh manual.
+- **Riesgos COM no mitigados**: `.accdb` en OneDrive sin pre-hidratación, BD bloqueada por sesión interactiva sin lock-wait, prompts modales (AutoExec / SetWarnings) que cuelgan COM hasta el timeout de 300s.
+
+**Qué cambió:**
+
+- **`app/access_engine.py`:**
+  - Bug fix: `_refresh_excel_file` usa `run_engine()` (no `ExcelCOMUpdater().run()`).
+  - Nuevo `_prepare_access_db()` que detecta placeholder OneDrive, dispara descarga, y espera lock del `.accdb` reutilizando helpers de `excel_engine`.
+  - `_run_access_operations` parametrizado (`run_pre_macros` / `run_imports` / `run_post_macros`) para poder ejecutarse en dos sesiones cuando hay Compact en medio.
+  - `_compact_repair` y `_run_access_operations` ahora aplican `AutomationSecurity = 3` (msoAutomationSecurityForceDisable) y `DoCmd.SetWarnings(False)` para silenciar prompts.
+  - `PipelineConfig` extendido con: `compact_position` (`"" | "before_macros" | "after_pre_macros" | "skip"`), `post_refresh_excel_files`, `continue_on_error`, `access_lock_timeout`, `access_lock_retry`.
+  - Default nuevo: `compact_position` resuelve a `"after_pre_macros"` cuando `compact_before_import=True` (replica orden manual). Tareas que dependen del orden viejo deben setear `compact_position: "before_macros"`.
+  - Orquestador `run()`: nuevo Paso 1.5 (preparar .accdb), tres ramas según `compact_position` (incluye cerrar/reabrir Access cuando compact va entre pre-macros e imports), nuevo Paso 8 que refresca `post_refresh_excel_files` reutilizando `_refresh_excel_file`.
+  - Helper `_attempt()` en `_run_access_operations` para encapsular semántica fail-fast vs `continue_on_error` por macro/import individual.
+  - Cuando `continue_on_error` deja fallos parciales, `success=False` + `error_msg` con conteo → notificaciones `on_error` se disparan correctamente.
+
+- **`app/scheduler.py`** ([líneas 137-152](app/scheduler.py#L137-L152)): cableado de los campos nuevos del JSON al `PipelineConfig`.
+
+- **`app/routes.py`:**
+  - `PipelineTaskCreate` y `ReposicionTaskCreate` extendidos con `compact_position`, `post_refresh_excel_files`, `continue_on_error`.
+  - `create_pipeline_task` y `create_reposicion_pipeline_task` validan existencia de los archivos `post_refresh_excel_files`.
+  - `_build_reposicion_pipeline_cfg` ahora propaga los 3 campos nuevos al JSON.
+
+- **`app/static/index.html`** (sección pipeline):
+  - Nuevo textarea `f-post-refresh-files` (TABLEROS A REFRESCAR DESPUÉS DEL ETL).
+  - Nuevo select `f-compact-position` (auto / after_pre_macros / before_macros / skip).
+  - Nuevo toggle `f-continue-on-error`.
+  - `openEditModal` carga los 3 campos nuevos.
+  - `saveTask` los envía en `pipelineCfg`.
+
+**Blast radius:**
+- API `POST /api/tasks/pipeline`: contrato extendido con campos opcionales. Backward compatible — clientes viejos siguen funcionando.
+- **CAMBIO DE COMPORTAMIENTO**: tareas pipeline ya creadas en producción que tenían `compact_before_import=true` (default) ahora ejecutan Compact DESPUÉS de pre_import_macros en vez de antes. Es lo correcto según el manual, pero cambia timing y duración. Para forzar orden legacy explícito: `compact_position: "before_macros"`.
+- Cuando `compact_position == "after_pre_macros"`, Access se abre/cierra DOS veces (sesión 1: pre-macros, sesión 2: imports + post-macros) en vez de una. ~2-4s extra por run.
+
+**Documentación actualizada:** este `CHANGELOG_AI.md`, `CLAUDE_CONTEXT.md` (sección Modelos/Flujos).
+
+**Notas para futuro:**
+- `DoCmd.RunSavedImportExport` es case-sensitive y falla silenciosamente si el nombre no matchea. Verificar en Access → Datos externos → Importaciones guardadas.
+- `CompactRepair` requiere BD cerrada (por eso la sesión-en-dos-partes para `after_pre_macros`).
+- `post_refresh_excel_files` se valida en `create_pipeline_task` (existencia al crear). Si los tableros se mueven después, la validación de existencia se vuelve a hacer al ejecutar (en `_refresh_excel_file` → `run_engine`).
+- El endpoint atajo `POST /api/tasks/pipeline/reposicion` también recibió los campos nuevos. Macros e importaciones siguen hardcoded (es justamente su valor agregado vs. el genérico); el body solo expone rutas y flags.
+- UI: dependencia visual entre `f-compact-position` y `f-compact` no se refleja con disabled — si el usuario selecciona "Auto" el toggle aplica; si elige posición explícita el toggle se ignora silenciosamente. El hint lo dice pero podría confundir; futuro: deshabilitar el toggle dinámicamente cuando el select no esté en "Auto".
+
+---
+
 ## 2026-05-24 — Recuperación masiva de UI/backend perdidos en el commit de auth
 
 **Commits relacionados:** rebase del estado de trabajo previo a `0a7b3b4` sobre `HEAD` (sin commitear aún; cambios en working tree).

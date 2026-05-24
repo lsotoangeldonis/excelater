@@ -59,6 +59,7 @@ deploy.ps1             # Hot-update
 ## Modelos clave (`app/database.py`)
 
 - **Task** (`tasks`): id (uuid), name, file_path, schedule_type, schedule_config (JSON), refresh_*, save_on_success, excel_visible, **task_type** (`excel`/`pipeline`/`workflow`), **pipeline_config** (JSON), max_retries, retry_delay_s, retry_count, status (`active`/`paused`/`disabled`), last_run_at, last_run_status, next_run_at, **deleted_at** (soft delete).
+  - `pipeline_config` (cuando `task_type == "pipeline"`): `excel_files[]` (fuentes), `access_db`, `pre_import_macros[]`, `saved_imports[]`, `post_import_macros[]`, `post_refresh_excel_files[]` (paso 8 = tableros consumidores), `compact_position` (`"" | "before_macros" | "after_pre_macros" | "skip"`, default resuelto a `after_pre_macros`), `continue_on_error`, `compact_before_import` (legacy, respetado si `compact_position == ""`), timeouts Excel/Access.
 - **RunLog** (`run_logs`): id, task_id, status (`running`/`success`/`failed`/`skipped`/`cancelled`), started/finished_at, duration_s, log_file, error_msg, connections, pivots_ok/err, retry_attempt.
 - **NotificationRule**: por tarea; trigger (`always`/`on_error`/`on_success`/`first_run_of_day`), channel (`email`/`whatsapp`), recipients (JSON).
 - **ReportSchedule**: reportes resumen programados; mismo schedule_type que Task.
@@ -76,6 +77,17 @@ deploy.ps1             # Hot-update
    - Despacha por `task_type`: excel_engine / pipeline (excel+access) / workflows.registry.
    - Reintentos si `max_retries > 0`.
    - Cierra RunLog + dispara notificaciones por reglas.
+
+   **Pipeline Access ETL** (`AccessPipelineRunner.run()`, en `app/access_engine.py`) — orden real:
+   1. Refrescar `excel_files[]` (fuentes / cubos) vía `run_engine()` (hereda hidratación OneDrive + lock-wait).
+   2. **Preparar `.accdb`**: hidratar OneDrive si es placeholder + `wait_for_file` (detecta `.laccdb`).
+   3. Según `compact_position`:
+      - `before_macros`: Compact → abrir Access → pre-macros → imports → post-macros → cerrar.
+      - `after_pre_macros` (**default**): abrir Access → pre-macros → cerrar → Compact → re-preparar → reabrir → imports → post-macros → cerrar.
+      - `skip`: sin Compact.
+   4. Refrescar `post_refresh_excel_files[]` (paso 8 manual: tableros consumidores que leen de Access).
+
+   Cada apertura COM aplica `AutomationSecurity = 3` (silencia prompts de macros) + `DoCmd.SetWarnings(False)` (silencia confirmaciones de action queries). Si `continue_on_error == True`, un fallo individual en macro/import/tablero no aborta; el run termina con `success=False` y `error_msg` con conteo.
 3. **Run-now manual** → `POST /tasks/{id}/run-now` → mismo `execute_task` en `asyncio.create_task`.
 4. **Workflow test** → `POST /tasks/{id}/test-run {force_weekday: 1..7}` (sólo task_type=workflow).
 5. **Auth**: login → JWT (8h) → frontend guarda en `localStorage['excelater_token']` → cada request lleva `Authorization: Bearer ...` → 401 redirect `/login`.
@@ -97,8 +109,8 @@ deploy.ps1             # Hot-update
 
 ## Riesgos a tener en mente
 
-1. **Excel/COM**: si Excel está abierto por el usuario → lock; si Excel muestra modal → cuelga (timeout 300s).
-2. **OneDrive Files On-Demand**: archivo no descargado → falla; no hay pre-hidratación.
+1. **Excel/COM**: si Excel está abierto por el usuario → lock retry (`lock_timeout`, default 120s). Si Excel muestra modal → cuelga hasta `refresh_timeout` (300s). En pipeline, `AutomationSecurity=3` + `SetWarnings(False)` mitigan modales de Access.
+2. **OneDrive Files On-Demand**: pre-hidratación implementada para `.xlsx` fuente, `.accdb`, y `.xlsx` consumidores en pipeline (vía `_is_onedrive_placeholder` + `_trigger_onedrive_download`). Para tareas Excel puras el wrapper `run_engine()` también lo cubre.
 3. **Migraciones SQLite**: `_migrate_existing_db` usa ALTER + try/except. No olvidar al cambiar modelos.
 4. **JWT_SECRET vacío**: tokens se invalidan al reiniciar. `create_superadmin.py` lo genera y persiste.
 5. **`index.html` monolítico (2900+ líneas)**: alto riesgo de conflicto en merges grandes. Ya pasó una vez (`0a7b3b4` borró ~50% de features; recuperación 2026-05-24).
@@ -144,4 +156,4 @@ Get-Content -Tail 100 -Wait logs\excelater.log
 
 ---
 
-_Versión: 1.0 — 2026-05-24_
+_Versión: 1.1 — 2026-05-24_

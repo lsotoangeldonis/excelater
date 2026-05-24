@@ -960,14 +960,37 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="form-group form-full">
           <textarea id="f-post-macros" rows="2" placeholder="Ejecutar ETL Procesos sin Top Venta Categoría" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
         </div>
+        <div class="section-label">TABLEROS A REFRESCAR DESPUÉS DEL ETL (uno por línea)</div>
+        <div class="form-group form-full">
+          <label>Rutas de tableros/herramientas finales</label>
+          <textarea id="f-post-refresh-files" rows="3" placeholder="C:\...\1 Tableros\Tablero de Reposición Sneakers.xlsm&#10;C:\...\1 Tableros\Tablero de Reposición Non Sneakers.xlsm" style="font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+          <span class="hint-sm">Equivalente al paso 8 manual: refresca los tableros que leen de Access, una vez completado el ETL.</span>
+        </div>
         <div class="section-label">OPCIONES PIPELINE</div>
         <div>
+          <div class="form-group form-full">
+            <label>Posición de Compact &amp; Repair</label>
+            <select id="f-compact-position" style="font-family:var(--mono);font-size:12px">
+              <option value="">Auto (recomendado: después de pre-macros)</option>
+              <option value="after_pre_macros">Después de pre-macros (replica el manual)</option>
+              <option value="before_macros">Antes de abrir Access (legacy)</option>
+              <option value="skip">No compactar</option>
+            </select>
+            <span class="hint-sm">"Auto" deriva de la checkbox de abajo: compacta después de pre-macros si está activa, o no compacta si está apagada.</span>
+          </div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <div>Compactar BD antes de importar</div>
-              <div class="toggle-desc">Ejecuta Compact &amp; Repair en la BD Access</div>
+              <div>Compactar BD (Compact &amp; Repair)</div>
+              <div class="toggle-desc">Solo aplica cuando "Posición" es Auto. Si elegiste una posición explícita, este flag se ignora.</div>
             </div>
             <label class="toggle"><input type="checkbox" id="f-compact" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Continuar si una macro/importación falla</div>
+              <div class="toggle-desc">Si está activo, un fallo individual en macro o importación no aborta el pipeline; se reporta como éxito parcial.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-continue-on-error"><span class="toggle-slider"></span></label>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
@@ -2138,7 +2161,10 @@ async function openEditTask(id) {
     document.getElementById('f-pre-macros').value = (pc.pre_import_macros || []).join('\n');
     document.getElementById('f-saved-imports').value = (pc.saved_imports || []).join('\n');
     document.getElementById('f-post-macros').value = (pc.post_import_macros || []).join('\n');
+    document.getElementById('f-post-refresh-files').value = (pc.post_refresh_excel_files || []).map(e => e.path).join('\n');
     document.getElementById('f-compact').checked = pc.compact_before_import !== false;
+    document.getElementById('f-compact-position').value = pc.compact_position || '';
+    document.getElementById('f-continue-on-error').checked = !!pc.continue_on_error;
     document.getElementById('f-access-visible').checked = !!pc.access_visible;
   } else if (taskType === 'workflow') {
     const pc = t.pipeline_config || {};
@@ -2262,19 +2288,23 @@ async function saveTask() {
       const accessDb = document.getElementById('f-access-db').value.trim();
       if (!accessDb) { toast('La ruta de la BD Access es obligatoria', 'error'); return; }
 
-      const excelLines = document.getElementById('f-excel-files').value.split('\n').map(l => l.trim()).filter(Boolean);
-      const preMacros  = document.getElementById('f-pre-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
-      const imports    = document.getElementById('f-saved-imports').value.split('\n').map(l => l.trim()).filter(Boolean);
-      const postMacros = document.getElementById('f-post-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const excelLines       = document.getElementById('f-excel-files').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const preMacros        = document.getElementById('f-pre-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const imports          = document.getElementById('f-saved-imports').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const postMacros       = document.getElementById('f-post-macros').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const postRefreshLines = document.getElementById('f-post-refresh-files').value.split('\n').map(l => l.trim()).filter(Boolean);
 
       const pipelineCfg = {
         access_db: accessDb,
         excel_files: excelLines.map(p => ({ path: p, visible: false })),
         access_visible: document.getElementById('f-access-visible').checked,
         compact_before_import: document.getElementById('f-compact').checked,
+        compact_position: document.getElementById('f-compact-position').value,
         pre_import_macros: preMacros,
         saved_imports: imports,
         post_import_macros: postMacros,
+        post_refresh_excel_files: postRefreshLines.map(p => ({ path: p, visible: false })),
+        continue_on_error: document.getElementById('f-continue-on-error').checked,
         excel_refresh_timeout: 300,
       };
 

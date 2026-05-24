@@ -139,12 +139,17 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
             access_db=pipeline_cfg_dict.get("access_db", ""),
             access_visible=pipeline_cfg_dict.get("access_visible", False),
             compact_before_import=pipeline_cfg_dict.get("compact_before_import", True),
+            compact_position=pipeline_cfg_dict.get("compact_position", ""),
             pre_import_macros=pipeline_cfg_dict.get("pre_import_macros", []),
             saved_imports=pipeline_cfg_dict.get("saved_imports", []),
             post_import_macros=pipeline_cfg_dict.get("post_import_macros", []),
+            post_refresh_excel_files=pipeline_cfg_dict.get("post_refresh_excel_files", []),
             excel_refresh_timeout=pipeline_cfg_dict.get("excel_refresh_timeout", settings.refresh_timeout_s),
             excel_refresh_check=pipeline_cfg_dict.get("excel_refresh_check", settings.refresh_check_s),
             excel_lock_timeout=pipeline_cfg_dict.get("excel_lock_timeout", settings.lock_timeout_s),
+            access_lock_timeout=pipeline_cfg_dict.get("access_lock_timeout", settings.lock_timeout_s),
+            access_lock_retry=pipeline_cfg_dict.get("access_lock_retry", 5),
+            continue_on_error=pipeline_cfg_dict.get("continue_on_error", False),
         )
         try:
             result = await asyncio.to_thread(run_pipeline, pipe_cfg, logger)

@@ -114,9 +114,12 @@ class PipelineTaskCreate(BaseModel):
     excel_files: list[ExcelFileConfig] = []
     access_visible: bool = False
     compact_before_import: bool = True
+    compact_position: str = ""  # "" | "before_macros" | "after_pre_macros" | "skip"
     pre_import_macros: list[str] = []
     saved_imports: list[str] = []
     post_import_macros: list[str] = []
+    post_refresh_excel_files: list[ExcelFileConfig] = []  # paso 8: tableros consumidores
+    continue_on_error: bool = False
     excel_refresh_timeout: int = 300
     max_retries: int = 0
     retry_delay_s: int = 60
@@ -133,6 +136,10 @@ class ReposicionTaskCreate(BaseModel):
     cubo_sku_suc_transferencias: str
     access_visible: bool = False
     compact_before_import: bool = True
+    compact_position: str = ""  # "" | "before_macros" | "after_pre_macros" | "skip"
+    # Tableros consumidores (paso 8 del manual): Sneakers, Non-Sneakers, Lanzamientos, etc.
+    post_refresh_excel_files: list[ExcelFileConfig] = []
+    continue_on_error: bool = False
     excel_refresh_timeout: int = 300
     max_retries: int = 0
     retry_delay_s: int = 60
@@ -148,6 +155,7 @@ def _build_reposicion_pipeline_cfg(body: ReposicionTaskCreate) -> dict:
         "access_db": body.access_db,
         "access_visible": body.access_visible,
         "compact_before_import": body.compact_before_import,
+        "compact_position": body.compact_position,
         "pre_import_macros": ["Ejecutar Elimina Cubos"],
         "saved_imports": [
             "Importación: Cubo_SKU_SUC_Maestro",
@@ -155,6 +163,10 @@ def _build_reposicion_pipeline_cfg(body: ReposicionTaskCreate) -> dict:
             "Importación: Cubo_SKU_SUC_Transferencias",
         ],
         "post_import_macros": ["Ejecutar ETL Procesos"],
+        "post_refresh_excel_files": [
+            {"path": ef.path, "visible": ef.visible} for ef in body.post_refresh_excel_files
+        ],
+        "continue_on_error": body.continue_on_error,
         "excel_refresh_timeout": body.excel_refresh_timeout,
     }
 
@@ -255,7 +267,7 @@ async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depe
             status_code=400,
             detail=f"BD Access no encontrada: {access_db_resolved}",
         )
-    # Validar archivos Excel
+    # Validar archivos Excel fuente
     for ef in body.excel_files:
         ep = resolve_path(ef.path)
         if not Path(ep).exists():
@@ -263,15 +275,28 @@ async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depe
                 status_code=400,
                 detail=f"Archivo Excel no encontrado: {ep}",
             )
+    # Validar tableros consumidores (paso 8)
+    for ef in body.post_refresh_excel_files:
+        ep = resolve_path(ef.path)
+        if not Path(ep).exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tablero post-refresh no encontrado: {ep}",
+            )
 
     pipeline_cfg = {
         "excel_files": [{"path": ef.path, "visible": ef.visible} for ef in body.excel_files],
         "access_db": body.access_db,
         "access_visible": body.access_visible,
         "compact_before_import": body.compact_before_import,
+        "compact_position": body.compact_position,
         "pre_import_macros": body.pre_import_macros,
         "saved_imports": body.saved_imports,
         "post_import_macros": body.post_import_macros,
+        "post_refresh_excel_files": [
+            {"path": ef.path, "visible": ef.visible} for ef in body.post_refresh_excel_files
+        ],
+        "continue_on_error": body.continue_on_error,
         "excel_refresh_timeout": body.excel_refresh_timeout,
     }
 
@@ -326,6 +351,14 @@ async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncS
             raise HTTPException(
                 status_code=400,
                 detail=f"Archivo Excel no encontrado: {ep}",
+            )
+    # Validar tableros consumidores (paso 8)
+    for ef in body.post_refresh_excel_files:
+        ep = resolve_path(ef.path)
+        if not Path(ep).exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tablero post-refresh no encontrado: {ep}",
             )
 
     pipeline_cfg = _build_reposicion_pipeline_cfg(body)
