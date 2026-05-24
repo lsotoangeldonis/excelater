@@ -119,7 +119,7 @@ if static_dir.exists():
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not found")
         # Ruta explícita para login
-        if full_path in ("login", "login.html", ""):
+        if full_path in ("login", "login.html"):
             login_page = static_dir / "login.html"
             if login_page.exists():
                 return FileResponse(login_page)
