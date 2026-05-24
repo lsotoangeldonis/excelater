@@ -152,12 +152,12 @@ class AccessPipelineRunner:
     def _refresh_excel_file(self, file_path: str, visible: bool) -> bool:
         """Refresca un archivo Excel usando COM, esperando TODOS los tipos de conexión.
 
-        Delega en run_engine() (no en ExcelCOMUpdater.run() directo) para heredar
+        Delega en run_update() (no en ExcelCOMUpdater.run() directo) para heredar
         pre-hidratación OneDrive y wait_for_file (lock-wait) que solo viven en el
         wrapper público.
         """
         import threading
-        from app.excel_engine import EngineConfig, run_engine
+        from app.excel_engine import EngineConfig, run_update
 
         ecfg = EngineConfig(
             file_path=file_path,
@@ -172,7 +172,7 @@ class AccessPipelineRunner:
             lock_max_retries=0,
             stop_event=threading.Event(),
         )
-        result = run_engine(ecfg, self.log)
+        result = run_update(ecfg, self.log)
         name = Path(file_path).name
         if result.success:
             self.log.info(
