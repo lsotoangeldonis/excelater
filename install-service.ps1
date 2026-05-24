@@ -9,18 +9,18 @@ param(
     # Instala sin preguntas interactivas (usa valores por defecto)
     [switch] $NonInteractive,
 
-    # No inicia la tarea al terminar la instalación
+    # No inicia la tarea al terminar la instalacion
     [switch] $SkipStart
 )
 <#
 .SYNOPSIS
     Instala Excelater como tarea programada de Windows (Task Scheduler).
 .DESCRIPTION
-    - Detecta automáticamente el python.exe del venv de Poetry
+    - Detecta automaticamente el python.exe del venv de Poetry
     - Instala las dependencias del proyecto
     - Elimina el servicio NSSM si existe
-    - Registra la tarea para que arranque al iniciar sesión (Sesión 1)
-      → Necesario para Excel COM y OneDrive Files On-Demand
+    - Registra la tarea para que arranque al iniciar sesion (Sesion 1)
+      -> Necesario para Excel COM y OneDrive Files On-Demand
 .PARAMETER Port
     Puerto en que escucha uvicorn. Por defecto: 8000.
 .PARAMETER OpenFirewall
@@ -37,7 +37,7 @@ param(
     .\install-service.ps1 -NonInteractive -OpenFirewall -Port 9000
 .NOTES
     Debe ejecutarse como Administrador.
-    Ejecutar desde la carpeta raíz del proyecto.
+    Ejecutar desde la carpeta raiz del proyecto.
     IMPORTANTE: El usuario debe estar logueado para que la tarea funcione.
 #>
 
@@ -45,11 +45,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ServiceName = "Excelater"
-$ProjectDir   = $PSScriptRoot   # carpeta donde está este script
+$ProjectDir   = $PSScriptRoot   # carpeta donde esta este script
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # Helpers
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 function Write-Step([string]$msg) {
     Write-Host "`n>> $msg" -ForegroundColor Cyan
 }
@@ -63,9 +63,9 @@ function Write-Fail([string]$msg) {
     exit 1
 }
 
-# ─────────────────────────────────────────────
-# Configuración interactiva
-# ─────────────────────────────────────────────
+# ---------------------------------------------
+# Configuracion interactiva
+# ---------------------------------------------
 $doFirewall = $OpenFirewall.IsPresent
 $doStart    = -not $SkipStart.IsPresent
 
@@ -95,16 +95,16 @@ if (-not $NonInteractive) {
     Write-Host ""
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 1. Detectar poetry.exe
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Buscando poetry.exe..."
 
 $_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
 $poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
 
 if (-not $poetryPath) {
-    # Ubicaciones comunes cuando no está en PATH
+    # Ubicaciones comunes cuando no esta en PATH
     $candidates = @(
         "$env:APPDATA\Python\Scripts\poetry.exe",
         "$env:APPDATA\pypoetry\venv\Scripts\poetry.exe",
@@ -116,18 +116,18 @@ if (-not $poetryPath) {
 }
 
 if (-not $poetryPath) {
-    Write-Fail "poetry.exe no encontrado. Asegúrate de tener Poetry instalado (pip install poetry)."
+    Write-Fail "poetry.exe no encontrado. Asegurate de tener Poetry instalado (pip install poetry)."
 }
 
 Write-Ok "poetry: $poetryPath"
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 2. Instalar dependencias y obtener path del venv
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Instalando dependencias con Poetry..."
 Push-Location $ProjectDir
 & $poetryPath install --without dev
-if ($LASTEXITCODE -ne 0) { Write-Fail "poetry install falló. Revisa los errores anteriores." }
+if ($LASTEXITCODE -ne 0) { Write-Fail "poetry install fallo. Revisa los errores anteriores." }
 
 $venvPath = (& $poetryPath env info --path).Trim()
 if (-not $venvPath -or -not (Test-Path $venvPath)) {
@@ -135,19 +135,19 @@ if (-not $venvPath -or -not (Test-Path $venvPath)) {
 }
 $pythonExe = Join-Path $venvPath "Scripts\python.exe"
 if (-not (Test-Path $pythonExe)) {
-    Write-Fail "No se encontró python.exe en el venv: $pythonExe"
+    Write-Fail "No se encontro python.exe en el venv: $pythonExe"
 }
 Pop-Location
 
 Write-Ok "venv Python: $pythonExe"
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 3. Validar estructura del proyecto
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Validando proyecto en: $ProjectDir"
 
 if (-not (Test-Path "$ProjectDir\pyproject.toml")) {
-    Write-Fail "No se encontró pyproject.toml en $ProjectDir. Ejecuta este script desde la carpeta raíz del proyecto."
+    Write-Fail "No se encontro pyproject.toml en $ProjectDir. Ejecuta este script desde la carpeta raiz del proyecto."
 }
 
 if (-not (Test-Path "$ProjectDir\.env")) {
@@ -160,7 +160,7 @@ if (-not (Test-Path "$ProjectDir\.env")) {
     }
 }
 
-# Generar JWT_SECRET si no está configurado en .env
+# Generar JWT_SECRET si no esta configurado en .env
 $envContent = Get-Content "$ProjectDir\.env" -Raw -ErrorAction SilentlyContinue
 if ($envContent -notmatch 'JWT_SECRET\s*=\s*\S') {
     $jwtSecret = -join ((48..57 + 97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
@@ -177,11 +177,11 @@ if ($envContent -notmatch 'JWT_SECRET\s*=\s*\S') {
     }
 }
 
-Write-Ok "Estructura válida"
+Write-Ok "Estructura valida"
 
-# ─────────────────────────────────────────────
-# 4. Crear superusuario (primera instalación)
-# ─────────────────────────────────────────────
+# ---------------------------------------------
+# 4. Crear superusuario (primera instalacion)
+# ---------------------------------------------
 Write-Step "Configurando usuario administrador..."
 
 $needsSuperadmin = $false  # flag para aviso en resumen final
@@ -238,12 +238,12 @@ except: sys.exit(1)
     }
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 5. Eliminar tarea/servicio previo si existen
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Verificando tarea/servicio existente..."
 
-# Si quedó un servicio NSSM del pasado, eliminarlo primero
+# Si quedo un servicio NSSM del pasado, eliminarlo primero
 $legacyService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($legacyService) {
     Write-Host "   Detectado servicio NSSM '$ServiceName'. Eliminando..." -ForegroundColor Yellow
@@ -266,16 +266,16 @@ $needsRecreate = $false
 if ($existingTask) {
     $existingArg = $existingTask.Actions[0].Arguments
     if ($existingArg -match "--port\s+$Port\b") {
-        Write-Ok "Tarea '$ServiceName' ya existe con puerto $Port — se actualizará en el registro"
+        Write-Ok "Tarea '$ServiceName' ya existe con puerto $Port - se actualizara en el registro"
     } else {
-        Write-Host "   Puerto cambió o tarea desactualizada. Recreando..." -ForegroundColor Yellow
+        Write-Host "   Puerto cambio o tarea desactualizada. Recreando..." -ForegroundColor Yellow
         $needsRecreate = $true
     }
-    # Detener si está corriendo antes de modificarla
+    # Detener si esta corriendo antes de modificarla
     if ($existingTask.State -eq "Running") {
         Stop-ScheduledTask -TaskName $ServiceName
         Start-Sleep -Seconds 2
-        Write-Ok "Tarea detenida para actualización"
+        Write-Ok "Tarea detenida para actualizacion"
     }
     if ($needsRecreate) {
         Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
@@ -283,9 +283,9 @@ if ($existingTask) {
     }
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 6. Registrar tarea programada (Task Scheduler)
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Registrando tarea programada '$ServiceName'..."
 
 # Si ya existe y no necesita recrearse, saltamos el registro
@@ -304,7 +304,7 @@ $action = New-ScheduledTaskAction `
     -Argument         $argument `
     -WorkingDirectory $ProjectDir
 
-# AtLogOn sin -Password → corre en la sesión interactiva (Sesión 1)
+# AtLogOn sin -Password -> corre en la sesion interactiva (Sesion 1)
 # Necesario para OneDrive Files On-Demand y Excel COM
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
@@ -327,9 +327,9 @@ Register-ScheduledTask `
     Write-Ok "Tarea registrada para usuario: $env:USERNAME"
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 7. Regla de Firewall
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Configurando regla de firewall..."
 
 $firewallRuleName = "Excelater API"
@@ -339,7 +339,7 @@ if ($doFirewall) {
         # Verificar si ya tiene el puerto correcto
         $existingPort = ($existing | Get-NetFirewallPortFilter).LocalPort
         if ($existingPort -eq $Port.ToString()) {
-            Write-Ok "Regla '$firewallRuleName' ya existe con TCP/$Port — sin cambios"
+            Write-Ok "Regla '$firewallRuleName' ya existe con TCP/$Port - sin cambios"
         } else {
             Set-NetFirewallRule -DisplayName $firewallRuleName -LocalPort $Port | Out-Null
             Write-Ok "Regla '$firewallRuleName' actualizada: TCP/$existingPort -> TCP/$Port"
@@ -359,9 +359,9 @@ if ($doFirewall) {
     Write-Host "   Sin cambios en firewall. Acceso solo desde localhost." -ForegroundColor Yellow
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 8. Iniciar tarea
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Step "Iniciando tarea..."
 
 if (-not $doStart) {
@@ -370,7 +370,7 @@ if (-not $doStart) {
 } else {
     $currentState = (Get-ScheduledTask -TaskName $ServiceName).State
     if ($currentState -eq "Running") {
-        Write-Ok "Tarea ya está corriendo"
+        Write-Ok "Tarea ya esta corriendo"
     } else {
         Start-ScheduledTask -TaskName $ServiceName
         Start-Sleep -Seconds 4
@@ -379,24 +379,24 @@ if (-not $doStart) {
         if ($taskState -eq "Running") {
             Write-Ok "Tarea corriendo"
         } else {
-            Write-Host "   WARN Estado: $taskState — revisa: $logFile" -ForegroundColor Yellow
+            Write-Host "   WARN Estado: $taskState - revisa: $logFile" -ForegroundColor Yellow
         }
     }
 }
 
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 # 9. Resumen
-# ─────────────────────────────────────────────
+# ---------------------------------------------
 Write-Host ""
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Excelater registrado en Task Scheduler" -ForegroundColor Cyan
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  URL:      http://localhost:$Port"
 Write-Host "  Health:   http://localhost:$Port/health"
 Write-Host "  Log:      $logFile"
-Write-Host "  Usuario:  $env:USERNAME  (Sesión 1 — OneDrive + Excel COM OK)"
+Write-Host "  Usuario:  $env:USERNAME  (Sesion 1 - OneDrive + Excel COM OK)"
 Write-Host ""
-Write-Host "  Comandos útiles:"
+Write-Host "  Comandos utiles:"
 Write-Host "    Get-ScheduledTask        -TaskName $ServiceName"
 Write-Host "    Start-ScheduledTask      -TaskName $ServiceName"
 Write-Host "    Stop-ScheduledTask       -TaskName $ServiceName"

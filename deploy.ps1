@@ -1,9 +1,9 @@
 #Requires -RunAsAdministrator
 param(
-    # No reinicia el servicio al terminar (solo actualiza código y deps)
+    # No reinicia el servicio al terminar (solo actualiza codigo y deps)
     [switch] $NoRestart,
 
-    # No ejecuta poetry install (más rápido si no cambiaron dependencias)
+    # No ejecuta poetry install (mas rapido si no cambiaron dependencias)
     [switch] $SkipInstall,
 
     # Rama a usar en git pull
@@ -13,7 +13,7 @@ param(
 .SYNOPSIS
     Actualiza Excelater desde git y reinicia el servicio.
 .DESCRIPTION
-    1. Detiene la tarea programada si está corriendo
+    1. Detiene la tarea programada si esta corriendo
     2. git pull
     3. poetry install (sincroniza dependencias)
     4. Reinicia la tarea programada
@@ -30,18 +30,18 @@ $ErrorActionPreference = "Stop"
 $ServiceName = "Excelater"
 $ProjectDir  = $PSScriptRoot
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 function Write-Step([string]$msg) { Write-Host "`n>> $msg" -ForegroundColor Cyan }
 function Write-Ok([string]$msg)   { Write-Host "   OK  $msg" -ForegroundColor Green }
 function Write-Warn([string]$msg) { Write-Host "   WARN $msg" -ForegroundColor Yellow }
 function Write-Fail([string]$msg) { Write-Host "   ERR $msg" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Excelater - Deploy                    " -ForegroundColor Cyan
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 
-# ── 1. Detener tarea ──────────────────────────────────────────────────────────
+# -- 1. Detener tarea ----------------------------------------------------------
 Write-Step "Verificando tarea programada '$ServiceName'..."
 
 $task = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
@@ -66,8 +66,8 @@ if (-not $task) {
     }
 }
 
-# ── 2. Git pull ────────────────────────────────────────────────────────────────
-Write-Step "Actualizando código (git pull origin $Branch)..."
+# -- 2. Git pull ----------------------------------------------------------------
+Write-Step "Actualizando codigo (git pull origin $Branch)..."
 
 Push-Location $ProjectDir
 
@@ -80,12 +80,12 @@ $status = & git status --porcelain 2>&1
 if ($status) {
     Write-Warn "Hay cambios locales sin commitear:"
     $status | ForEach-Object { Write-Host "   $_" -ForegroundColor Yellow }
-    Write-Warn "Haciendo stash automático para permitir el pull..."
+    Write-Warn "Haciendo stash automatico para permitir el pull..."
     & git stash push -m "deploy-auto-stash-$(Get-Date -Format 'yyyyMMdd-HHmmss')" | Out-Null
 }
 
 & git pull origin $Branch
-if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "git pull falló. Revisa la conexión y los permisos del repositorio." }
+if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "git pull fallo. Revisa la conexion y los permisos del repositorio." }
 
 $commitHash = (& git rev-parse --short HEAD).Trim()
 $commitMsg  = (& git log -1 --pretty="%s").Trim()
@@ -93,7 +93,7 @@ Write-Ok "En commit: $commitHash - $commitMsg"
 
 Pop-Location
 
-# ── Detectar poetry (necesario para install y para verificar superadmin) ──────
+# -- Detectar poetry (necesario para install y para verificar superadmin) ------
 $_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
 $poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
 if (-not $poetryPath) {
@@ -106,13 +106,13 @@ if (-not $poetryPath) {
 }
 if (-not $poetryPath) { Write-Fail "poetry.exe no encontrado." }
 
-# ── 3. Dependencias ────────────────────────────────────────────────────────────
+# -- 3. Dependencias ------------------------------------------------------------
 if (-not $SkipInstall) {
     Write-Step "Actualizando dependencias (poetry install)..."
 
     Push-Location $ProjectDir
     & $poetryPath install --without dev
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "poetry install falló." }
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "poetry install fallo." }
     Pop-Location
 
     Write-Ok "Dependencias sincronizadas"
@@ -120,7 +120,7 @@ if (-not $SkipInstall) {
     Write-Warn "poetry install omitido (-SkipInstall)"
 }
 
-# ── 4. Reiniciar tarea ────────────────────────────────────────────────────────
+# -- 4. Reiniciar tarea --------------------------------------------------------
 if ($NoRestart) {
     Write-Warn "Reinicio omitido (-NoRestart). Inicia manualmente:"
     Write-Host "   Start-ScheduledTask -TaskName $ServiceName" -ForegroundColor Yellow
@@ -144,11 +144,11 @@ if ($NoRestart) {
     }
 }
 
-# ── Resumen ───────────────────────────────────────────────────────────────────
+# -- Resumen -------------------------------------------------------------------
 Write-Host ""
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Deploy completado" -ForegroundColor Green
-Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Commit : $commitHash - $commitMsg"
 $logFile = Join-Path $ProjectDir "logs\excelater.log"
 Write-Host "  Log    : $logFile"
@@ -156,14 +156,22 @@ Write-Host ""
 Write-Host "  Para ver el log en vivo:"
 Write-Host ("    Get-Content `"" + $logFile + "`" -Wait -Tail 30") -ForegroundColor Yellow
 
-# ── Verificar superadmin ──────────────────────────────────────────────────────
+# -- Verificar superadmin ------------------------------------------------------
 $dbFile = Join-Path $ProjectDir "scheduler.db"
 $hasSuperuser = $false
 if (Test-Path $dbFile) {
+    $tmpPy = [System.IO.Path]::GetTempFileName() + ".py"
+    @'
+import sqlite3, sys
+conn = sqlite3.connect('scheduler.db')
+row  = conn.execute("SELECT COUNT(*) FROM users WHERE role='superuser'").fetchone()
+sys.exit(0 if row[0] > 0 else 1)
+'@ | Set-Content -Path $tmpPy -Encoding ASCII
     Push-Location $ProjectDir
-    & $poetryPath run python -c "import sqlite3,sys; c=sqlite3.connect('scheduler.db'); r=c.execute(\"SELECT COUNT(*) FROM users WHERE role='superuser'\").fetchone(); sys.exit(0 if r[0]>0 else 1)" 2>$null
+    & $poetryPath run python $tmpPy 2>$null
     $hasSuperuser = ($LASTEXITCODE -eq 0)
     Pop-Location
+    Remove-Item $tmpPy -ErrorAction SilentlyContinue
 }
 
 if (-not $hasSuperuser) {
