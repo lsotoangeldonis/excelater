@@ -675,7 +675,7 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             <tr>
               <th class="sortable" data-sort="name" onclick="tableSortBy('tasks-table','name',applyTaskFilters)">Nombre<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="file_path" onclick="tableSortBy('tasks-table','file_path',applyTaskFilters)">Archivo<span class="sort-icon">↑</span></th>
-              <th>Programación</th>
+              <th class="sortable" data-sort="schedule" onclick="tableSortBy('tasks-table','schedule',applyTaskFilters)">Programación<span class="sort-icon">↑</span></th>
               <th class="sortable" data-sort="last_run_at" onclick="tableSortBy('tasks-table','last_run_at',applyTaskFilters)">Última ejecución<span class="sort-icon">↑</span></th>
               <th>Opciones</th>
               <th class="sortable" data-sort="status" onclick="tableSortBy('tasks-table','status',applyTaskFilters)">Estado<span class="sort-icon">↑</span></th>
@@ -1546,7 +1546,9 @@ function sortData(data, tableId) {
   if (!s || !s.col) return data;
   const col = s.col, d = s.dir === 'asc' ? 1 : -1;
   return [...data].sort((a, b) => {
-    let va = a[col] ?? '', vb = b[col] ?? '';
+    let va, vb;
+    if (col === 'schedule') { va = schLabel(a); vb = schLabel(b); }
+    else                    { va = a[col] ?? '';  vb = b[col] ?? ''; }
     if (typeof va === 'string' && /\d{4}-\d{2}-\d{2}T/.test(va)) va = new Date(va).getTime();
     if (typeof vb === 'string' && /\d{4}-\d{2}-\d{2}T/.test(vb)) vb = new Date(vb).getTime();
     if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * d;
