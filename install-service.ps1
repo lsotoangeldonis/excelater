@@ -271,11 +271,14 @@ if ($legacyService) {
 $existingTask = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
 $needsRecreate = $false
 if ($existingTask) {
-    $existingArg = $existingTask.Actions[0].Arguments
-    if ($existingArg -match "--port\s+$Port\b") {
+    $existingArg  = $existingTask.Actions[0].Arguments
+    $existingExec = $existingTask.Actions[0].Execute
+    $portOk = $existingArg -match "--port\s+$Port\b"
+    $execOk = $existingExec -notlike "*cmd.exe*"
+    if ($portOk -and $execOk) {
         Write-Ok "Tarea '$ServiceName' ya existe con puerto $Port - se actualizara en el registro"
     } else {
-        Write-Host "   Puerto cambio o tarea desactualizada. Recreando..." -ForegroundColor Yellow
+        Write-Host "   Tarea desactualizada (puerto o ejecutable cambiado). Recreando..." -ForegroundColor Yellow
         $needsRecreate = $true
     }
     # Detener si esta corriendo antes de modificarla
@@ -310,11 +313,13 @@ if ($existingTask -and -not $needsRecreate) {
 } else {
 
 
-# cmd /c con comillas externas para que >> y 2>&1 sean operadores shell
-$argument = "/c `"`"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port $Port >> `"$logFile`" 2>&1`""
+# powershell.exe -WindowStyle Hidden: sin ventana visible, redirige todos los streams al log
+$pyExeQ  = $pythonExe -replace "'", "''"
+$logFileQ = $logFile   -replace "'", "''"
+$argument = "-NonInteractive -NoProfile -WindowStyle Hidden -Command `"& '$pyExeQ' -m uvicorn app.main:app --host 0.0.0.0 --port $Port *>> '$logFileQ'""
 
 $action = New-ScheduledTaskAction `
-    -Execute          "cmd.exe" `
+    -Execute          "powershell.exe" `
     -Argument         $argument `
     -WorkingDirectory $ProjectDir
 
