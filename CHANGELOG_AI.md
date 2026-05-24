@@ -24,6 +24,65 @@
 
 ---
 
+## 2026-05-24 — Fix: pipeline colgaba RunLog en "RUNNING" para siempre (ImportError silencioso)
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** una ejecución de la tarea "Herramienta de Reposición" (pipeline Access ETL) quedaba marcada como **EN VIVO** indefinidamente en el UI tras pegar:
+
+```
+=== INICIO TAREA: Herramienta de Reposición (id=58a58d1d-...) ===
+[Excel] Procesando: Cubo_SKU_SUC_Maestro.xlsm
+```
+
+No había `EXCEL.exe` vivo. Diagnóstico: 3 bugs encadenados.
+
+**Bug 1 — Import roto** (`app/access_engine.py:160`):
+- El commit del Pipeline Access ETL hardening (entrada de arriba) introdujo `from app.excel_engine import EngineConfig, run_engine`. Pero `excel_engine.py` solo expone `run_update`. `run_engine` nunca existió.
+- Al primer `_refresh_excel_file()` se lanza `ImportError: cannot import name 'run_engine' from 'app.excel_engine'`.
+
+**Bug 2 — Excepción tragada** (`app/scheduler.py:154-160` y dos sitios más):
+- `execute_task` solo capturaba `asyncio.CancelledError`. Cualquier `Exception` (incluido el `ImportError` de arriba) burbujeaba al hilo de APScheduler, que la loggueaba en `excelater.log` y abortaba `execute_task` antes de la rama que actualiza el `RunLog`.
+- Resultado: `RunLog.status` quedaba en `RUNNING` para siempre, sin `finished_at`, sin `error_msg`. El UI lo mostraba "EN VIVO" eternamente.
+
+**Bug 3 — `excelater.log` ilegible** (`install-service.ps1:319`):
+- El operador `*>>` de PowerShell 5.1 escribe **UTF-16 LE**. Cada caracter ASCII pasa a ser 2 bytes (el segundo `0x00` se renderiza como espacio en `Get-Content`). El traceback del Bug 1 estaba ahí pero ilegible — por eso costó tanto encontrar root cause.
+
+**Qué cambió:**
+
+- **`app/access_engine.py`** (líneas 155, 160, 175): `run_engine` → `run_update`.
+- **`app/scheduler.py`**:
+  - Nuevo import: `traceback`.
+  - Nuevo helper local `_unhandled_error_result(exc)` dentro de `execute_task` que construye un "EngineResult" sintético (`success=False`, `error_msg`, `duration_s`, etc.) cuando una excepción no esperada llega al try.
+  - Los **3 bloques** (`pipeline`, `workflow`, Excel estándar) añaden `except Exception as exc: result = _unhandled_error_result(exc)`. Garantiza que el flujo de cierre de `RunLog` (status, finished_at, last_run_status) siempre se ejecute.
+- **`install-service.ps1`**:
+  - Línea de comando: `*>> '$log'` → `2>&1 | Out-File -FilePath '$log' -Encoding utf8 -Append`. Stdout y stderr van en UTF-8.
+  - Pre-check: si el `excelater.log` existente está en UTF-16 (BOM `FF FE` o `byte[1] == 0x00`), lo rota a `excelater.log.utf16.bak` para que el nuevo handler arranque limpio. Abre con `FileShare.ReadWrite` por si el servicio aún lo tiene abierto.
+
+**Blast radius:**
+- `execute_task` ahora **siempre** finaliza el RunLog correctamente. Tareas con excepciones inesperadas pasan de `RUNNING` zombie a `FAILED` con `error_msg` legible.
+- El cambio en `install-service.ps1` solo aplica al **siguiente** `install-service.ps1`. La Scheduled Task ya instalada sigue corriendo con la línea de comando vieja hasta que se re-registre.
+- Logs anteriores en UTF-16 se preservan como `.utf16.bak` (no se pierden).
+
+**Documentación actualizada:** este `CHANGELOG_AI.md`. Corregida también la mención errónea a `run_engine()` en la entrada inmediatamente posterior.
+
+**Acciones manuales pendientes en PROD (E:\Automation\excelater)** — el dev (D:) sí está fixed:
+1. `git pull` (o `.\deploy.ps1`) para traer los fixes de código.
+2. Re-ejecutar `.\install-service.ps1` para que la Scheduled Task use la nueva redirección UTF-8 y rote el log viejo.
+3. Marcar el RunLog huérfano (`id=18`) como `failed` para limpiar el "EN VIVO" del UI:
+   ```sql
+   UPDATE run_logs SET status='failed', finished_at=datetime('now'),
+     error_msg='ImportError run_engine (fix en commit XXXX)' WHERE id=18 AND status='running';
+   UPDATE tasks SET last_run_status='failed' WHERE id='58a58d1d-8e7f-4340-86bf-160bb27485c3';
+   ```
+
+**Notas para futuro:**
+- Si en algún momento se agrega un cuarto camino de ejecución en `execute_task`, recordar replicar el `except Exception → _unhandled_error_result`.
+- La detección de UTF-16 en `install-service.ps1` es heurística (BOM + null en byte 1). Si el log contiene primero un caracter ASCII real codificado como UTF-8 (1 byte) seguido de un null binario por accidente, falsearía positivo. Improbable en la práctica con logs de uvicorn.
+- Largo plazo: lo ideal sería configurar `uvicorn --log-config logging.yaml` para que Python escriba el log directamente (sin redirección PowerShell), evitando todo el tema de encoding. Fuera de scope acá.
+
+---
+
 ## 2026-05-24 — Pipeline Access ETL: hardening + paso 8 (post-refresh tableros)
 
 **Commits relacionados:** sin commitear aún (working tree).
@@ -37,7 +96,7 @@
 **Qué cambió:**
 
 - **`app/access_engine.py`:**
-  - Bug fix: `_refresh_excel_file` usa `run_engine()` (no `ExcelCOMUpdater().run()`).
+  - Bug fix (intencional): `_refresh_excel_file` debía usar el wrapper público de `excel_engine` (no `ExcelCOMUpdater().run()`) para heredar hidratación OneDrive + `wait_for_file`. **Ojo**: este commit introdujo además un bug regresivo — referenciaba `run_engine` (símbolo inexistente) en vez de `run_update`. Ver entrada del 2026-05-24 más arriba para el fix.
   - Nuevo `_prepare_access_db()` que detecta placeholder OneDrive, dispara descarga, y espera lock del `.accdb` reutilizando helpers de `excel_engine`.
   - `_run_access_operations` parametrizado (`run_pre_macros` / `run_imports` / `run_post_macros`) para poder ejecutarse en dos sesiones cuando hay Compact en medio.
   - `_compact_repair` y `_run_access_operations` ahora aplican `AutomationSecurity = 3` (msoAutomationSecurityForceDisable) y `DoCmd.SetWarnings(False)` para silenciar prompts.

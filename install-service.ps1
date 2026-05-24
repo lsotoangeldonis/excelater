@@ -307,16 +307,46 @@ if (-not (Test-Path $logsDir)) {
     Write-Ok "Directorio de logs creado: $logsDir"
 }
 
+# Si el log existe pero esta en UTF-16 (legado del operador *>> en PS5),
+# rotarlo a backup para que el nuevo handler arranque en UTF-8 limpio.
+# Se abre con FileShare.ReadWrite por si el servicio aun lo tiene abierto.
+if (Test-Path $logFile) {
+    $stream = $null
+    $head = New-Object byte[] 2
+    $bytesRead = 0
+    try {
+        $stream = [System.IO.File]::Open(
+            $logFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite
+        )
+        $bytesRead = $stream.Read($head, 0, 2)
+    } catch {
+        Write-Warn "No se pudo verificar encoding del log existente: $_"
+    } finally {
+        if ($stream) { $stream.Dispose() }
+    }
+    # UTF-16 LE BOM = FF FE; tambien detectamos null-byte en posicion 1 (ASCII en UTF-16)
+    if ($bytesRead -ge 2 -and (($head[0] -eq 0xFF -and $head[1] -eq 0xFE) -or $head[1] -eq 0x00)) {
+        $bak = "$logFile.utf16.bak"
+        try {
+            Move-Item -Path $logFile -Destination $bak -Force
+            Write-Warn "Log anterior en UTF-16 detectado. Movido a $bak"
+        } catch {
+            Write-Warn "No se pudo rotar log UTF-16 (archivo en uso?): $_"
+        }
+    }
+}
+
 # Si ya existe y no necesita recrearse, saltamos el registro
 if ($existingTask -and -not $needsRecreate) {
     Write-Ok "Tarea ya registrada correctamente. Sin cambios."
 } else {
 
 
-# powershell.exe -WindowStyle Hidden: sin ventana visible, redirige todos los streams al log
+# Redirige stdout+stderr a UTF-8. PS5 con *>> escribe UTF-16 LE (mojibake).
+# 2>&1 fusiona stderr en stdout; Out-File con -Encoding utf8 garantiza UTF-8.
 $pyExeQ  = $pythonExe -replace "'", "''"
 $logFileQ = $logFile   -replace "'", "''"
-$argument = "-NonInteractive -NoProfile -WindowStyle Hidden -Command `"& '$pyExeQ' -m uvicorn app.main:app --host 0.0.0.0 --port $Port *>> '$logFileQ'`""
+$argument = "-NonInteractive -NoProfile -WindowStyle Hidden -Command `"& '$pyExeQ' -m uvicorn app.main:app --host 0.0.0.0 --port $Port 2>&1 | Out-File -FilePath '$logFileQ' -Encoding utf8 -Append`""
 
 $action = New-ScheduledTaskAction `
     -Execute          "powershell.exe" `

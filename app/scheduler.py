@@ -7,6 +7,7 @@ import logging
 import logging.handlers
 import threading
 import time
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -130,6 +131,20 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
     t0 = time.time()
     cancelled = False
 
+    def _unhandled_error_result(exc: BaseException):
+        tb = traceback.format_exc()
+        logger.error(f"Excepción no manejada en ejecución:\n{tb}")
+        last_line = tb.strip().splitlines()[-1] if tb else type(exc).__name__
+        return type("ErrorResult", (), {
+            "success": False,
+            "error_msg": f"Excepción no manejada: {last_line}",
+            "duration_s": round(time.time() - t0, 2),
+            "connections_found": 0,
+            "pivots_ok": 0,
+            "pivots_err": 0,
+            "pivots_completed": None,
+        })()
+
     if task_type == "pipeline":
         # ── Pipeline Access ETL ──────────────────────────────────────────
         from app.access_engine import PipelineConfig, run_pipeline
@@ -156,6 +171,8 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
         except asyncio.CancelledError:
             cancelled = True
             logger.warning("Ejecución detenida manualmente.")
+        except Exception as exc:
+            result = _unhandled_error_result(exc)
         finally:
             _running_tasks.pop(run_id, None)
     elif task_type == "workflow":
@@ -190,6 +207,8 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
             except asyncio.CancelledError:
                 cancelled = True
                 logger.warning("Ejecución detenida manualmente.")
+            except Exception as exc:
+                result = _unhandled_error_result(exc)
             finally:
                 _running_tasks.pop(run_id, None)
     else:
@@ -215,6 +234,8 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
         except asyncio.CancelledError:
             cancelled = True
             logger.warning("Ejecución detenida manualmente.")
+        except Exception as exc:
+            result = _unhandled_error_result(exc)
         finally:
             _running_tasks.pop(run_id, None)
             _stop_events.pop(run_id, None)
