@@ -304,11 +304,11 @@ class ExcelCOMUpdater:
         skip          = self.cfg.skip_pivots  # set de (sheet_name, pivot_name)
 
         for s in range(1, self.wb.Sheets.Count + 1):
-            sheet = self._com_retry(lambda idx=s: self.wb.Sheets(idx))
+            sheet      = self._com_retry(lambda idx=s: self.wb.Sheets(idx))
+            sheet_name = self._com_retry(lambda sh=sheet: sh.Name)
             for p in range(1, self._com_retry(lambda sh=sheet: sh.PivotTables().Count) + 1):
-                pt         = self._com_retry(lambda sh=sheet, idx=p: sh.PivotTables(idx))
-                sheet_name = sheet.Name
-                pt_name    = pt.Name
+                pt      = self._com_retry(lambda sh=sheet, idx=p: sh.PivotTables(idx))
+                pt_name = self._com_retry(lambda t=pt: t.Name)
 
                 # ── Skip: pivot ya completado en run anterior ─────────────
                 if (sheet_name, pt_name) in skip:

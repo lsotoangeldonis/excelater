@@ -2006,7 +2006,7 @@ async function viewLog(runId, taskName) {
   _stopLogPoll();
   currentLogRunId = runId;
   _logPollOffset = 0;
-  document.getElementById('modal-log-title').textContent = `#${runId}}. Log — ${taskName}`;
+  document.getElementById('modal-log-title').textContent = `#${runId}. Log — ${taskName}`;
   const el = document.getElementById('log-content');
   el.textContent = 'Cargando…';
   el.dataset.empty = '1';
