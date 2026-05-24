@@ -80,7 +80,7 @@ async def send_webhook(payload: dict):
 # EJECUCIÓN DE TAREA
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def execute_task(task_id: str):
+async def execute_task(task_id: str, config_overrides: dict | None = None):
     async with AsyncSessionLocal() as db:
         task = await db.get(Task, task_id)
         if not task or task.status != TaskStatus.ACTIVE:
@@ -92,6 +92,7 @@ async def execute_task(task_id: str):
             task_name=task.name,
             status=RunStatus.RUNNING,
             started_at=datetime.now(),
+            retry_attempt=task.retry_count,  # 0=original, 1=primer reintento, etc.
         )
         db.add(run)
         await db.flush()
@@ -99,6 +100,27 @@ async def execute_task(task_id: str):
 
         logger, log_path = make_task_logger(task_id, task.name, run_id)
         run.log_file = str(log_path)
+
+        # Si es un reintento, cargar pivots ya completados del run fallido anterior
+        prev_pivots_completed: list[dict] = []
+        if task.retry_count > 0:
+            prev_run = await db.scalar(
+                select(RunLog)
+                .where(RunLog.task_id == task_id, RunLog.status == RunStatus.FAILED)
+                .order_by(RunLog.id.desc())
+                .limit(1)
+            )
+            if prev_run and prev_run.pivots_completed:
+                try:
+                    prev_pivots_completed = json.loads(prev_run.pivots_completed)
+                except Exception:
+                    prev_pivots_completed = []
+            if prev_pivots_completed:
+                logger.info(
+                    f"[Retry] Saltando {len(prev_pivots_completed)} pivot(s) ya completados "
+                    "en el run anterior."
+                )
+
         await db.commit()
 
     # Ejecutar fuera de la sesión DB para no bloquearla
@@ -131,6 +153,40 @@ async def execute_task(task_id: str):
             logger.warning("Ejecución detenida manualmente.")
         finally:
             _running_tasks.pop(run_id, None)
+    elif task_type == "workflow":
+        # ── Workflow personalizado (registry) ────────────────────────────
+        from app.workflows import registry
+        workflow_cfg = json.loads(task.pipeline_config or "{}")
+        # Aplicar overrides en tiempo de ejecución (ej: force_weekday para pruebas)
+        if config_overrides:
+            workflow_cfg = {**workflow_cfg, **config_overrides}
+        # Inyectar pivots completados del run anterior para skip en retry
+        if prev_pivots_completed:
+            workflow_cfg["skip_pivots"] = prev_pivots_completed
+        workflow_type_name = workflow_cfg.get("workflow_type", "")
+        handler_cls = registry.get(workflow_type_name)
+        if handler_cls is None:
+            result = type(
+                "EngineResult", (),
+                {
+                    "success": False,
+                    "error_msg": f"Workflow desconocido: '{workflow_type_name}'. "
+                                 f"Disponibles: {registry.available()}",
+                    "duration_s": 0.0,
+                    "connections_found": 0,
+                    "pivots_ok": 0,
+                    "pivots_err": 0,
+                },
+            )()
+            _running_tasks.pop(run_id, None)
+        else:
+            try:
+                result = await asyncio.to_thread(handler_cls().run, workflow_cfg, logger)
+            except asyncio.CancelledError:
+                cancelled = True
+                logger.warning("Ejecución detenida manualmente.")
+            finally:
+                _running_tasks.pop(run_id, None)
     else:
         # ── Tarea Excel estándar ─────────────────────────────────────────
         stop_event = threading.Event()
@@ -167,6 +223,10 @@ async def execute_task(task_id: str):
                 run.duration_s = round(time.time() - t0, 2)
                 run.error_msg = "Detenida manualmente"
                 await db.commit()
+                task = await db.get(Task, task_id)
+                if task:
+                    task.last_run_status = RunStatus.CANCELLED.value
+                    await db.commit()
         return
 
     finished = datetime.now()
@@ -180,14 +240,12 @@ async def execute_task(task_id: str):
         run.connections = result.connections_found
         run.pivots_ok = result.pivots_ok
         run.pivots_err = result.pivots_err
+        completed = getattr(result, "pivots_completed", None)
+        run.pivots_completed = json.dumps(completed) if completed else None
 
         task = await db.get(Task, task_id)
         task.last_run_at = finished
-
-        # Calcular próxima ejecución
-        job = scheduler.get_job(task_id)
-        if job and job.next_run_time:
-            task.next_run_at = job.next_run_time.replace(tzinfo=None)
+        task.last_run_status = (RunStatus.SUCCESS if result.success else RunStatus.FAILED).value
 
         # ── Retry automático ──────────────────────────────────────────────
         if not result.success and task.max_retries > 0:
@@ -203,15 +261,25 @@ async def execute_task(task_id: str):
                     kwargs={"task_id": task_id},
                     replace_existing=True,
                 )
+                # Próxima ejecución = momento del reintento (tiene prioridad sobre schedule regular)
+                task.next_run_at = retry_time
                 logger.warning(
                     f"Reintento {task.retry_count}/{task.max_retries} "
-                    f"programado en {delay}s."
+                    f"programado en {delay}s ({retry_time.strftime('%H:%M:%S')})."
                 )
             else:
                 task.retry_count = 0
                 logger.error("Se agotaron todos los reintentos.")
-        elif result.success:
-            task.retry_count = 0
+                # Restaurar próxima ejecución al schedule regular
+                job = scheduler.get_job(task_id)
+                if job and job.next_run_time:
+                    task.next_run_at = job.next_run_time.replace(tzinfo=None)
+        else:
+            # Éxito o sin retries: próxima ejecución = schedule regular
+            task.retry_count = 0 if result.success else task.retry_count
+            job = scheduler.get_job(task_id)
+            if job and job.next_run_time:
+                task.next_run_at = job.next_run_time.replace(tzinfo=None)
 
         await db.commit()
 

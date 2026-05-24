@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excelater — Iniciar sesión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #2D2A2E;
+  --bg2:    #221F22;
+  --bg3:    #403E41;
+  --border: #403E41;
+  --border2:#5B595C;
+  --text:   #FCFCFA;
+  --text2:  #939293;
+  --accent: #AB9DF2;
+  --accent2:#8B79D4;
+  --green:  #A9DC76;
+  --red:    #FF6188;
+  --yellow: #FFD866;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg2);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  width: 380px;
+  padding: 40px 36px 32px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.5);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.brand-icon {
+  width: 40px; height: 40px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.brand-name { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+.brand-sub  { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+
+h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.subtitle { font-size: 13px; color: var(--text2); margin-bottom: 28px; }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+label { font-size: 12px; font-family: var(--mono); color: var(--text2); }
+input {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 14px;
+  transition: border .15s;
+  width: 100%;
+}
+input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(171,157,242,.12); }
+input::placeholder { color: var(--text2); opacity: .5; }
+
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 42px; }
+.pw-toggle {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  cursor: pointer; color: var(--text2); font-size: 14px;
+  background: none; border: none; padding: 4px;
+}
+.pw-toggle:hover { color: var(--text); }
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 11px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 6px;
+  font-size: 14px; font-weight: 600; font-family: var(--sans);
+  cursor: pointer;
+  transition: background .15s;
+  margin-top: 8px;
+}
+.btn:hover { background: var(--accent2); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.alert {
+  display: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+.alert-err  { display: flex; background: rgba(255,97,136,.12); border: 1px solid rgba(255,97,136,.3); color: var(--red); }
+.alert-info { display: flex; background: rgba(171,157,242,.10); border: 1px solid rgba(171,157,242,.25); color: var(--accent); }
+
+.footer-note { text-align: center; font-size: 11px; color: var(--text2); margin-top: 20px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    <div>
+      <div class="brand-name">Excelater</div>
+      <div class="brand-sub">OneDrive / SharePoint</div>
+    </div>
+  </div>
+
+  <h1>Iniciar sesión</h1>
+  <p class="subtitle">Ingresa tus credenciales para continuar</p>
+
+  <div id="alert" class="alert"></div>
+
+  <form id="login-form" autocomplete="on" novalidate>
+    <div class="form-group">
+      <label for="username">Usuario</label>
+      <input id="username" name="username" type="text" autocomplete="username"
+             placeholder="tu_usuario" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Contraseña</label>
+      <div class="pw-wrap">
+        <input id="password" name="password" type="password" autocomplete="current-password"
+               placeholder="••••••••" required>
+        <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Mostrar contraseña">
+          👁
+        </button>
+      </div>
+    </div>
+    <button class="btn" type="submit" id="submit-btn">
+      Ingresar
+    </button>
+  </form>
+
+  <p class="footer-note">Excelater v1.0 · Sesión expira en 8h</p>
+</div>
+
+<script>
+  // ── Toggle contraseña visible ──────────────────────────────────────────────
+  document.getElementById('pw-toggle').addEventListener('click', () => {
+    const pw = document.getElementById('password');
+    pw.type = pw.type === 'password' ? 'text' : 'password';
+  });
+
+  // ── Redirigir si ya hay sesión válida ─────────────────────────────────────
+  (function checkExistingSession() {
+    try {
+      const raw = localStorage.getItem('excelater_token');
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (!s.token || !s.expires_at) return;
+      if (new Date(s.expires_at) > new Date()) {
+        window.location.replace('/');
+      }
+    } catch (_) {
+      localStorage.removeItem('excelater_token');
+    }
+  })();
+
+  // ── Login form ────────────────────────────────────────────────────────────
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn   = document.getElementById('submit-btn');
+    const alert = document.getElementById('alert');
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+
+    if (!username || !password) {
+      showAlert('err', 'Completa usuario y contraseña.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Ingresando...';
+    alert.className = 'alert';
+    alert.style.display = 'none';
+
+    try {
+      // OAuth2PasswordRequestForm requiere application/x-www-form-urlencoded
+      const body = new URLSearchParams({ username, password });
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        credentials: 'same-origin',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Guardar sesión en localStorage
+        localStorage.setItem('excelater_token', JSON.stringify({
+          token:      data.access_token,
+          expires_at: data.expires_at,
+          username:   data.username,
+          role:       data.role,
+          full_name:  data.full_name,
+        }));
+        window.location.replace('/');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showAlert('err', err.detail || 'Error de autenticación. Intenta de nuevo.');
+        btn.disabled = false;
+        btn.innerHTML = 'Ingresar';
+      }
+    } catch (_) {
+      showAlert('err', 'No se pudo conectar con el servidor.');
+      btn.disabled = false;
+      btn.innerHTML = 'Ingresar';
+    }
+  });
+
+  function showAlert(type, msg) {
+    const el = document.getElementById('alert');
+    el.textContent = msg;
+    el.className = 'alert alert-' + type;
+    el.style.display = 'flex';
+  }
+</script>
+</body>
+</html>

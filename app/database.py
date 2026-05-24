@@ -58,6 +58,12 @@ class ChannelType(str, enum.Enum):
     WHATSAPP = "whatsapp"
 
 
+class UserRole(str, enum.Enum):
+    SUPERUSER = "superuser"   # Acceso total + gestión de admins
+    ADMIN     = "admin"       # Acceso total + gestión de usuarios lectores
+    READER    = "reader"      # Solo lectura
+
+
 # ── Tablas ────────────────────────────────────────────────────────────────────
 class Task(Base):
     __tablename__ = "tasks"
@@ -91,6 +97,7 @@ class Task(Base):
     created_at       = Column(DateTime, default=datetime.now)
     updated_at       = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     last_run_at      = Column(DateTime, nullable=True)
+    last_run_status  = Column(String, nullable=True)   # "success" | "failed" | "cancelled"
     next_run_at      = Column(DateTime, nullable=True)
     deleted_at       = Column(DateTime, nullable=True)  # Soft-delete
 
@@ -98,18 +105,20 @@ class Task(Base):
 class RunLog(Base):
     __tablename__ = "run_logs"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    task_id      = Column(String, nullable=False)
-    task_name    = Column(String, nullable=False)
-    status       = Column(SAEnum(RunStatus), nullable=False)
-    started_at   = Column(DateTime, default=datetime.now)
-    finished_at  = Column(DateTime, nullable=True)
-    duration_s   = Column(Float, nullable=True)
-    log_file     = Column(String, nullable=True)   # ruta al .log
-    error_msg    = Column(Text, nullable=True)
-    connections  = Column(Integer, default=0)
-    pivots_ok    = Column(Integer, default=0)
-    pivots_err   = Column(Integer, default=0)
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    task_id        = Column(String, nullable=False)
+    task_name      = Column(String, nullable=False)
+    status         = Column(SAEnum(RunStatus), nullable=False)
+    started_at     = Column(DateTime, default=datetime.now)
+    finished_at    = Column(DateTime, nullable=True)
+    duration_s     = Column(Float, nullable=True)
+    log_file       = Column(String, nullable=True)   # ruta al .log
+    error_msg      = Column(Text, nullable=True)
+    connections        = Column(Integer, default=0)
+    pivots_ok          = Column(Integer, default=0)
+    pivots_err         = Column(Integer, default=0)
+    pivots_completed   = Column(Text, nullable=True)  # JSON: [{"sheet": .., "pivot": ..}, ...]
+    retry_attempt      = Column(Integer, default=0)  # 0 = ejecución original, 1+ = reintento N
 
 
 class NotificationRule(Base):
@@ -141,6 +150,21 @@ class ReportSchedule(Base):
     created_at     = Column(DateTime, default=datetime.now)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    username     = Column(String, nullable=False, unique=True, index=True)
+    full_name    = Column(String, nullable=False, default="")
+    email        = Column(String, nullable=True, unique=True, index=True)
+    hashed_pw    = Column(String, nullable=False)
+    role         = Column(SAEnum(UserRole), nullable=False, default=UserRole.READER)
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime, default=datetime.now)
+    updated_at   = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    last_login   = Column(DateTime, nullable=True)
+
+
 # ── Inicialización ────────────────────────────────────────────────────────────
 async def init_db():
     async with engine.begin() as conn:
@@ -159,12 +183,35 @@ def _migrate_existing_db(conn):
         "ALTER TABLE tasks ADD COLUMN retry_count INTEGER DEFAULT 0",
         "ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'excel'",
         "ALTER TABLE tasks ADD COLUMN pipeline_config TEXT DEFAULT '{}'",
+        "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
+        "ALTER TABLE run_logs ADD COLUMN retry_attempt INTEGER DEFAULT 0",
+        "ALTER TABLE run_logs ADD COLUMN pivots_completed TEXT",
     ]
     for sql in migrations:
         try:
             conn.execute(text(sql))
         except Exception:
             pass  # La columna ya existe
+
+    # Tabla users (creada con create_all; esta migración es por si la DB
+    # existente fue creada antes de que se añadiera la tabla)
+    try:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                username   TEXT NOT NULL UNIQUE,
+                full_name  TEXT NOT NULL DEFAULT '',
+                email      TEXT UNIQUE,
+                hashed_pw  TEXT NOT NULL,
+                role       TEXT NOT NULL DEFAULT 'reader',
+                is_active  INTEGER NOT NULL DEFAULT 1,
+                created_at DATETIME,
+                updated_at DATETIME,
+                last_login DATETIME
+            )
+        """))
+    except Exception:
+        pass
 
     # Normalizar valores de columnas enum a lowercase (versiones anteriores
     # guardaban los nombres del enum en mayúsculas, p.ej. "INTERVAL" en vez de "interval")

@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import init_db, engine, AsyncSessionLocal, RunLog, RunStatus
 from app.scheduler import scheduler, load_all_tasks
 from app.routes import router
+from app.auth_routes import auth_router
 
 logger = logging.getLogger("excelater")
 
@@ -90,6 +91,7 @@ app.add_middleware(
 )
 
 # API
+app.include_router(auth_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 
@@ -116,6 +118,11 @@ if static_dir.exists():
         if full_path.startswith("api") or full_path == "api":
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not found")
+        # Ruta explícita para login
+        if full_path in ("login", "login.html", ""):
+            login_page = static_dir / "login.html"
+            if login_page.exists():
+                return FileResponse(login_page)
         index = static_dir / "index.html"
         return FileResponse(index)
 

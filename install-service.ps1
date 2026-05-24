@@ -159,6 +159,14 @@ if (-not (Test-Path "$ProjectDir\.env")) {
     }
 }
 
+# Generar JWT_SECRET si no está configurado en .env
+$envContent = Get-Content "$ProjectDir\.env" -Raw -ErrorAction SilentlyContinue
+if ($envContent -notmatch 'JWT_SECRET\s*=\s*\S') {
+    $jwtSecret = -join ((48..57 + 97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
+    Add-Content -Path "$ProjectDir\.env" -Value "`nJWT_SECRET=$jwtSecret"
+    Write-Ok "JWT_SECRET generado y guardado en .env"
+}
+
 # Crear carpetas necesarias
 @("logs", "data") | ForEach-Object {
     $folder = Join-Path $ProjectDir $_
@@ -171,7 +179,60 @@ if (-not (Test-Path "$ProjectDir\.env")) {
 Write-Ok "Estructura válida"
 
 # ─────────────────────────────────────────────
-# 4. Eliminar tarea/servicio previo si existen
+# 4. Crear superusuario (primera instalación)
+# ─────────────────────────────────────────────
+Write-Step "Configurando usuario administrador..."
+
+$dbFile = Join-Path $ProjectDir "scheduler.db"
+$superadminScript = Join-Path $ProjectDir "scripts\create_superadmin.py"
+
+if (-not (Test-Path $superadminScript)) {
+    Write-Host "   WARN script create_superadmin.py no encontrado. Omitiendo paso." -ForegroundColor Yellow
+} else {
+    # Verificar si ya existe la tabla users con al menos un superusuario
+    $hasSuperuser = $false
+    if (Test-Path $dbFile) {
+        try {
+            $checkResult = & $pythonExe -c @"
+import sqlite3, sys
+try:
+    c = sqlite3.connect(r'$dbFile')
+    r = c.execute("SELECT COUNT(*) FROM users WHERE role='superuser'").fetchone()
+    sys.exit(0 if r[0] > 0 else 1)
+except: sys.exit(1)
+"@
+            $hasSuperuser = ($LASTEXITCODE -eq 0)
+        } catch { $hasSuperuser = $false }
+    }
+
+    if ($hasSuperuser) {
+        Write-Host "   Ya existe un superusuario. Omitiendo creación." -ForegroundColor Yellow
+        Write-Host "   Para crear otro, ejecuta manualmente:" -ForegroundColor Yellow
+        Write-Host "   poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+    } else {
+        if (-not $NonInteractive) {
+            Write-Host ""
+            Write-Host "   No existe ningún superusuario. Se ejecutará el asistente de creación." -ForegroundColor Cyan
+            Write-Host "   Completa los datos para acceder al dashboard de Excelater." -ForegroundColor Cyan
+            Write-Host ""
+            Push-Location $ProjectDir
+            & $pythonExe scripts/create_superadmin.py
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "   WARN La creación del superusuario no se completó. Puedes ejecutarla manualmente:" -ForegroundColor Yellow
+                Write-Host "   poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+            } else {
+                Write-Ok "Superusuario creado"
+            }
+            Pop-Location
+        } else {
+            Write-Host "   Modo no-interactivo: omitiendo creación de superusuario." -ForegroundColor Yellow
+            Write-Host "   Ejecuta manualmente: poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+        }
+    }
+}
+
+# ─────────────────────────────────────────────
+# 5. Eliminar tarea/servicio previo si existen
 # ─────────────────────────────────────────────
 Write-Step "Verificando tarea/servicio existente..."
 
@@ -200,7 +261,7 @@ if ($existingTask) {
 }
 
 # ─────────────────────────────────────────────
-# 5. Registrar tarea programada (Task Scheduler)
+# 6. Registrar tarea programada (Task Scheduler)
 # ─────────────────────────────────────────────
 Write-Step "Registrando tarea programada '$ServiceName'..."
 
@@ -238,7 +299,7 @@ Register-ScheduledTask `
 Write-Ok "Tarea registrada para usuario: $env:USERNAME"
 
 # ─────────────────────────────────────────────
-# 6. Regla de Firewall
+# 7. Regla de Firewall
 # ─────────────────────────────────────────────
 Write-Step "Configurando regla de firewall..."
 
@@ -264,7 +325,7 @@ if ($doFirewall) {
 }
 
 # ─────────────────────────────────────────────
-# 7. Iniciar tarea
+# 8. Iniciar tarea
 # ─────────────────────────────────────────────
 Write-Step "Iniciando tarea..."
 
@@ -284,7 +345,7 @@ if (-not $doStart) {
 }
 
 # ─────────────────────────────────────────────
-# 8. Resumen
+# 9. Resumen
 # ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan

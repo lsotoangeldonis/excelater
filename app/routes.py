@@ -1,4 +1,4 @@
-"""app/routes.py — Endpoints REST del dashboard"""
+﻿"""app/routes.py — Endpoints REST del dashboard"""
 from __future__ import annotations
 
 import asyncio
@@ -6,12 +6,14 @@ import csv
 import io
 import json
 import logging
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, desc
@@ -27,12 +29,13 @@ from app.scheduler import (
     add_or_replace_job, remove_job, pause_job, resume_job,
     execute_task, scheduler, cancel_run, add_report_job, remove_report_job,
 )
+from app.auth import require_reader, require_admin
 
 router = APIRouter()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AUTENTICACIÓN
+# AUTENTICACIÓN LEGACY (API Key — mantenida para compatibilidad)
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def verify_api_key(
@@ -117,6 +120,43 @@ class PipelineTaskCreate(BaseModel):
     retry_delay_s: int = 60
 
 
+class ReposicionTaskCreate(BaseModel):
+    name: str = "Actualizacion Herramienta Reposicion"
+    description: str = "Pipeline automatico de reposicion (Access ETL)"
+    schedule_type: ScheduleType
+    schedule_config: ScheduleConfig
+    access_db: str
+    cubo_sku_suc_maestro: str
+    cubo_sku_suc: str
+    cubo_sku_suc_transferencias: str
+    access_visible: bool = False
+    compact_before_import: bool = True
+    excel_refresh_timeout: int = 300
+    max_retries: int = 0
+    retry_delay_s: int = 60
+
+
+def _build_reposicion_pipeline_cfg(body: ReposicionTaskCreate) -> dict:
+    return {
+        "excel_files": [
+            {"path": body.cubo_sku_suc_maestro, "visible": False},
+            {"path": body.cubo_sku_suc, "visible": False},
+            {"path": body.cubo_sku_suc_transferencias, "visible": False},
+        ],
+        "access_db": body.access_db,
+        "access_visible": body.access_visible,
+        "compact_before_import": body.compact_before_import,
+        "pre_import_macros": ["Ejecutar Elimina Cubos"],
+        "saved_imports": [
+            "Importación: Cubo_SKU_SUC_Maestro",
+            "Importación: Cubo_SKU_SUC",
+            "Importación: Cubo_SKU_SUC_Transferencias",
+        ],
+        "post_import_macros": ["Ejecutar ETL Procesos"],
+        "excel_refresh_timeout": body.excel_refresh_timeout,
+    }
+
+
 def _task_to_dict(task: Task) -> dict:
     cfg = json.loads(task.schedule_config or "{}")
     pipeline_cfg = json.loads(task.pipeline_config or "{}") if getattr(task, "pipeline_config", None) else {}
@@ -140,6 +180,7 @@ def _task_to_dict(task: Task) -> dict:
         "created_at": task.created_at,
         "updated_at": task.updated_at,
         "last_run_at": task.last_run_at,
+        "last_run_status": getattr(task, "last_run_status", None),
         "next_run_at": task.next_run_at,
     }
 
@@ -258,6 +299,186 @@ async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depe
 
     await db.commit()
     return _task_to_dict(task)
+
+
+@router.post("/tasks/pipeline/reposicion", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncSession = Depends(get_db)):
+    """Crea una tarea pipeline de Reposición con pasos preconfigurados de Access."""
+    from app.excel_engine import resolve_path
+
+    access_db_resolved = resolve_path(body.access_db)
+    if not Path(access_db_resolved).exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"BD Access no encontrada: {access_db_resolved}",
+        )
+
+    excel_files = [
+        body.cubo_sku_suc_maestro,
+        body.cubo_sku_suc,
+        body.cubo_sku_suc_transferencias,
+    ]
+    for ef in excel_files:
+        ep = resolve_path(ef)
+        if not Path(ep).exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archivo Excel no encontrado: {ep}",
+            )
+
+    pipeline_cfg = _build_reposicion_pipeline_cfg(body)
+
+    task = Task(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        file_path=body.access_db,
+        task_type="pipeline",
+        pipeline_config=json.dumps(pipeline_cfg),
+        schedule_type=body.schedule_type,
+        schedule_config=json.dumps(body.schedule_config.model_dump(exclude_none=True)),
+        refresh_connections=False,
+        refresh_pivots=False,
+        save_on_success=False,
+        excel_visible=False,
+        max_retries=body.max_retries,
+        retry_delay_s=body.retry_delay_s,
+        status=TaskStatus.ACTIVE,
+    )
+    db.add(task)
+    await db.flush()
+
+    nxt = add_or_replace_job(task)
+    if nxt:
+        task.next_run_at = nxt.replace(tzinfo=None)
+
+    await db.commit()
+    return _task_to_dict(task)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXPORT / IMPORT DE TAREAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tasks/export", dependencies=[Depends(verify_api_key)])
+async def export_tasks(
+    ids: Optional[str] = Query(default=None, description="IDs de tarea separados por coma (vacío = todas)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exporta la configuración de tareas activas como JSON descargable.
+    Solo incluye campos de configuración; omite estado de ejecución e historial."""
+    q = select(Task).where(Task.deleted_at.is_(None))
+    if ids:
+        id_list = [i.strip() for i in ids.split(",") if i.strip()]
+        q = q.where(Task.id.in_(id_list))
+    tasks = (await db.execute(q)).scalars().all()
+
+    export_data = {
+        "version": "1",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "tasks": [
+            {
+                "name": t.name,
+                "description": t.description,
+                "file_path": t.file_path,
+                "task_type": getattr(t, "task_type", "excel") or "excel",
+                "pipeline_config": json.loads(t.pipeline_config) if getattr(t, "pipeline_config", None) else {},
+                "schedule_type": t.schedule_type,
+                "schedule_config": json.loads(t.schedule_config or "{}"),
+                "refresh_connections": t.refresh_connections,
+                "refresh_pivots": t.refresh_pivots,
+                "save_on_success": t.save_on_success,
+                "excel_visible": t.excel_visible,
+                "max_retries": t.max_retries,
+                "retry_delay_s": t.retry_delay_s,
+            }
+            for t in tasks
+        ],
+    }
+
+    filename = f"excelater_tasks_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+    content = json.dumps(export_data, ensure_ascii=False, indent=2, default=str)
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/tasks/import", dependencies=[Depends(verify_api_key)])
+async def import_tasks(
+    file: UploadFile = File(...),
+    validate_paths: bool = Query(default=True, description="Verificar que los archivos existan en disco"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Importa tareas desde un JSON exportado por Excelater.
+    Cada tarea importada recibe un ID nuevo; las existentes no se modifican."""
+    try:
+        raw = await file.read()
+        data = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, f"Archivo JSON inválido: {exc}")
+
+    if not isinstance(data, dict) or "tasks" not in data:
+        raise HTTPException(400, "Formato inválido: se espera un objeto con clave 'tasks'")
+    if data.get("version", "1") != "1":
+        raise HTTPException(400, f"Versión de formato no soportada: {data.get('version')}")
+
+    created: list[dict] = []
+    skipped: list[dict] = []
+
+    for raw_task in data["tasks"]:
+        name = raw_task.get("name")
+        if not name:
+            skipped.append({"name": "(sin nombre)", "reason": "Falta el campo 'name'"})
+            continue
+
+        schedule_type = raw_task.get("schedule_type")
+        if not schedule_type:
+            skipped.append({"name": name, "reason": "Falta 'schedule_type'"})
+            continue
+
+        file_path = raw_task.get("file_path", "")
+        if validate_paths and file_path:
+            resolved = resolve_path(file_path)
+            if not Path(resolved).exists():
+                skipped.append({"name": name, "reason": f"Archivo no encontrado: {resolved}"})
+                continue
+
+        pipeline_cfg = raw_task.get("pipeline_config") or {}
+        task = Task(
+            id=str(uuid.uuid4()),
+            name=name,
+            description=raw_task.get("description", ""),
+            file_path=file_path,
+            task_type=raw_task.get("task_type", "excel"),
+            pipeline_config=json.dumps(pipeline_cfg) if pipeline_cfg else None,
+            schedule_type=schedule_type,
+            schedule_config=json.dumps(raw_task.get("schedule_config", {})),
+            refresh_connections=raw_task.get("refresh_connections", True),
+            refresh_pivots=raw_task.get("refresh_pivots", True),
+            save_on_success=raw_task.get("save_on_success", True),
+            excel_visible=raw_task.get("excel_visible", False),
+            max_retries=raw_task.get("max_retries", 0),
+            retry_delay_s=raw_task.get("retry_delay_s", 60),
+            status=TaskStatus.ACTIVE,
+        )
+        db.add(task)
+        await db.flush()
+
+        nxt = add_or_replace_job(task)
+        if nxt:
+            task.next_run_at = nxt.replace(tzinfo=None)
+
+        created.append(_task_to_dict(task))
+
+    await db.commit()
+    return {
+        "imported": len(created),
+        "skipped": len(skipped),
+        "tasks": created,
+        "errors": skipped,
+    }
 
 
 @router.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
@@ -497,6 +718,7 @@ async def list_logs(
                 "connections": r.connections,
                 "pivots_ok": r.pivots_ok,
                 "pivots_err": r.pivots_err,
+                "retry_attempt": getattr(r, "retry_attempt", 0) or 0,
             }
             for r in rows
         ],
@@ -506,12 +728,15 @@ async def list_logs(
 @router.delete("/logs", dependencies=[Depends(verify_api_key)])
 async def clear_logs(
     task_id: Optional[str] = None,
+    status: Optional[RunStatus] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Elimina todos los RunLog (o solo los de una tarea) y sus archivos de log en disco."""
+    """Elimina todos los RunLog (o solo los de una tarea/estado) y sus archivos de log en disco."""
     q = select(RunLog).where(RunLog.status != RunStatus.RUNNING)
     if task_id:
         q = q.where(RunLog.task_id == task_id)
+    if status:
+        q = q.where(RunLog.status == status)
     rows = (await db.execute(q)).scalars().all()
     deleted = 0
     for r in rows:
@@ -590,6 +815,31 @@ async def view_log(run_id: int, db: AsyncSession = Depends(get_db)):
     return {"content": path.read_text(encoding="utf-8", errors="replace")}
 
 
+@router.get("/logs/{run_id}/tail", dependencies=[Depends(verify_api_key)])
+async def tail_log(run_id: int, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    """Devuelve el contenido del log desde `offset` bytes hasta el final.
+    Permite al frontend hacer polling incremental para ver logs en tiempo real."""
+    run = await db.get(RunLog, run_id)
+    if not run:
+        raise HTTPException(404, "Ejecución no encontrada")
+    if not run.log_file:
+        return {"content": "", "offset": 0, "status": run.status}
+    path = Path(run.log_file)
+    if not path.exists():
+        return {"content": "", "offset": 0, "status": run.status}
+    size = path.stat().st_size
+    if offset >= size:
+        return {"content": "", "offset": size, "status": run.status}
+    with path.open("rb") as f:
+        f.seek(offset)
+        chunk = f.read(size - offset)
+    return {
+        "content": chunk.decode("utf-8", errors="replace"),
+        "offset": size,
+        "status": run.status,
+    }
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ESTADÍSTICAS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -623,6 +873,51 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         "running_now": running_now,
         "success_rate": round(success_runs / total_runs * 100, 1) if total_runs else 0,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FILE BROWSER (selector nativo de Windows)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_FILTER_MAP = {
+    "excel":  "Archivos Excel (*.xlsx;*.xlsm;*.xls)|*.xlsx;*.xlsm;*.xls|Todos los archivos (*.*)|*.*",
+    "access": "Bases de datos Access (*.accdb;*.mdb)|*.accdb;*.mdb|Todos los archivos (*.*)|*.*",
+    "any":    "Todos los archivos (*.*)|*.*",
+}
+
+
+@router.get("/browse-file", dependencies=[Depends(verify_api_key)])
+async def browse_file(filter: str = Query(default="any")):
+    """Abre el diálogo de apertura de archivos de Windows y devuelve la ruta seleccionada.
+    Solo funciona cuando el servidor corre en Windows en la misma máquina que el usuario."""
+    if sys.platform != "win32":
+        raise HTTPException(400, "El selector de archivos solo está disponible en Windows")
+
+    file_filter = _FILTER_MAP.get(filter, _FILTER_MAP["any"])
+    ps_script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$d = New-Object System.Windows.Forms.OpenFileDialog; "
+        f"$d.Filter = '{file_filter}'; "
+        "$d.Title = 'Seleccionar archivo'; "
+        "[void][System.Windows.Forms.Application]::EnableVisualStyles(); "
+        "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.FileName }"
+    )
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                capture_output=True, text=True, timeout=120,
+            ),
+        )
+        path = result.stdout.strip()
+        if not path:
+            return {"path": None}
+        return {"path": path}
+    except subprocess.TimeoutExpired:
+        return {"path": None}
+    except Exception as exc:
+        raise HTTPException(500, f"Error al abrir el selector: {exc}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

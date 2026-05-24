@@ -383,6 +383,53 @@ select.filter-select { max-width: 160px; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   aside { display: none; }
 }
+
+/* ── User widget ── */
+.user-widget {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.user-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0;
+}
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-role {
+  font-size: 10px; font-family: var(--mono); color: var(--text2);
+  padding: 1px 5px; border-radius: 3px; background: var(--bg3);
+  display: inline-block; margin-top: 2px;
+}
+.user-role-superuser { color: var(--yellow); }
+.user-role-admin     { color: var(--cyan); }
+.user-role-reader    { color: var(--text2); }
+.btn-logout {
+  background: transparent; border: none; color: var(--text2);
+  cursor: pointer; font-size: 14px; padding: 4px;
+  transition: color .15s;
+}
+.btn-logout:hover { color: var(--red); }
+
+/* ── Role chip topbar ── */
+.topbar-user {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text2); font-family: var(--mono);
+}
+.topbar-user-name { color: var(--text); font-weight: 500; }
+
+/* ── Users table ── */
+.role-pill {
+  font-family: var(--mono); font-size: 11px;
+  padding: 2px 8px; border-radius: 4px;
+  background: var(--bg3); border: 1px solid var(--border2);
+}
+.role-pill-superuser { color: var(--yellow); border-color: rgba(255,216,102,.3); }
+.role-pill-admin     { color: var(--cyan);   border-color: rgba(120,220,232,.3); }
+.role-pill-reader    { color: var(--text2);  border-color: var(--border2); }
 </style>
 </head>
 <body>
@@ -419,10 +466,24 @@ select.filter-select { max-width: 160px; }
       <div class="nav-item" onclick="goPage('schedreports')">
         <span class="nav-icon"><i class="fa-solid fa-chart-bar"></i></span> Reportes programados
       </div>
+      <div class="nav-section admin-only" style="display:none">Administración</div>
+      <div class="nav-item admin-only" style="display:none" onclick="goPage('users')">
+        <span class="nav-icon"><i class="fa-solid fa-users"></i></span> Usuarios
+      </div>
     </nav>
-    <div class="sidebar-footer">
-      <span class="status-dot" id="srv-dot"></span>
-      <span class="status-label" id="srv-label">Conectando…</span>
+    <div class="sidebar-footer" style="padding:0;">
+      <div style="padding:10px 18px;display:flex;align-items:center;gap:6px;">
+        <span class="status-dot" id="srv-dot"></span>
+        <span class="status-label" id="srv-label">Conectando…</span>
+      </div>
+      <div class="user-widget" id="user-widget" onclick="goPage('profile')" title="Mi perfil">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="user-fullname">—</div>
+          <span class="user-role" id="user-role-badge">—</span>
+        </div>
+        <button class="btn-logout" id="btn-logout" title="Cerrar sesión" onclick="doLogout(event)"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </div>
     </div>
   </aside>
 
@@ -434,8 +495,12 @@ select.filter-select { max-width: 160px; }
         <div class="page-sub" id="page-sub">Resumen general del sistema</div>
       </div>
       <div class="topbar-actions">
+        <div class="topbar-user">
+          <i class="fa-solid fa-circle-user"></i>
+          <span class="topbar-user-name" id="topbar-username">—</span>
+        </div>
         <button class="btn btn-ghost btn-sm" onclick="refreshAll()"><i class="fa-solid fa-arrows-rotate"></i> Refrescar</button>
-        <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva tarea</button>
+        <button class="btn btn-primary btn-sm admin-only" style="display:none" onclick="openNewTask()">+ Nueva tarea</button>
       </div>
     </div>
 
@@ -588,6 +653,52 @@ select.filter-select { max-width: 160px; }
             <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- PÁGINA: USUARIOS (admin/superuser) -->
+    <div class="page" id="page-users">
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Gestión de usuarios</div>
+          <div class="table-actions">
+            <button class="btn btn-primary btn-sm" onclick="openNewUser()"><i class="fa-solid fa-user-plus"></i> Nuevo usuario</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="users-body">
+            <tr><td colspan="7"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PÁGINA: MI PERFIL -->
+    <div class="page" id="page-profile">
+      <div style="max-width:500px;">
+        <div class="table-wrap" style="padding:24px;">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+            <div class="user-avatar" id="profile-avatar" style="width:52px;height:52px;font-size:22px;">?</div>
+            <div>
+              <div style="font-size:18px;font-weight:600;" id="profile-fullname">—</div>
+              <span class="user-role" id="profile-role">—</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>Username</label>
+            <input type="text" id="profile-username" readonly style="opacity:.6;cursor:not-allowed;">
+          </div>
+          <div class="form-group" style="margin-bottom:20px;">
+            <label>Email</label>
+            <input type="text" id="profile-email" readonly style="opacity:.6;cursor:not-allowed;">
+          </div>
+          <button class="btn btn-ghost btn-sm" style="width:auto;" onclick="openModal('modal-change-pw')">
+            <i class="fa-solid fa-key"></i> Cambiar contraseña
+          </button>
+        </div>
       </div>
     </div>
   </main>
@@ -886,6 +997,28 @@ select.filter-select { max-width: 160px; }
   </div>
 </div>
 
+<!-- MODAL: EJECUTAR AHORA -->
+<div class="modal-overlay" id="modal-run-now">
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <div class="modal-title">Ejecutar ahora</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-run-now')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <p id="run-now-task-name" style="margin:0 0 16px;font-weight:600;"></p>
+      <label class="toggle-row" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" id="run-now-skip-retry" style="width:16px;height:16px;">
+        <span>Desactivar reintentos automáticos en esta ejecución</span>
+      </label>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--text-muted);">Por defecto los reintentos configurados siguen activos.</p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-run-now')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="confirmRunNow()"><i class="fa-solid fa-play"></i> Ejecutar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: VER LOG -->
 <div class="modal-overlay" id="modal-log">
   <div class="modal log-modal">
@@ -906,6 +1039,99 @@ select.filter-select { max-width: 160px; }
 <!-- TOAST -->
 <div class="toast-container" id="toasts"></div>
 
+<!-- MODAL: NUEVO/EDITAR USUARIO -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal modal-md">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-user-title">Nuevo usuario</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-user')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Username</label>
+          <input id="u-username" type="text" placeholder="usuario123" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Nombre completo</label>
+          <input id="u-fullname" type="text" placeholder="Juan Pérez">
+        </div>
+        <div class="form-group">
+          <label>Email (opcional)</label>
+          <input id="u-email" type="email" placeholder="correo@empresa.com">
+        </div>
+        <div class="form-group">
+          <label>Rol</label>
+          <select id="u-role">
+            <option value="reader">Lector</option>
+            <option value="admin">Admin</option>
+            <option value="superuser">Superuser</option>
+          </select>
+        </div>
+        <div class="form-group" id="u-pw-group">
+          <label>Contraseña (mín. 8 caracteres)</label>
+          <input id="u-password" type="password" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <div class="form-group" id="u-active-group" style="display:none">
+          <label>Estado</label>
+          <select id="u-active">
+            <option value="true">Activo</option>
+            <option value="false">Inactivo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveUser()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RESET CONTRASEÑA -->
+<div class="modal-overlay" id="modal-reset-pw">
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <div class="modal-title">Resetear contraseña</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-reset-pw')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nueva contraseña</label>
+        <input id="reset-pw-value" type="password" placeholder="Mín. 8 caracteres" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('modal-reset-pw')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmResetPassword()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CAMBIAR MI CONTRASEÑA -->
+<div class="modal-overlay" id="modal-change-pw">
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <div class="modal-title">Cambiar mi contraseña</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-change-pw')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Contraseña actual</label>
+        <input id="cpw-current" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label>Nueva contraseña (mín. 8 caracteres)</label>
+        <input id="cpw-new" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('modal-change-pw')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmChangePassword()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = '/api';
 let currentPage = 'dashboard';
@@ -917,6 +1143,76 @@ let currentLogRunId = null;
 let allTasks = [];
 
 // ══════════════════════════════════════════════════════
+// AUTH — sesión JWT
+// ══════════════════════════════════════════════════════
+const SESSION_KEY = 'excelater_token';
+
+function getSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s.token || !s.expires_at) return null;
+    if (new Date(s.expires_at) <= new Date()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return s;
+  } catch (_) {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function requireAuth() {
+  const s = getSession();
+  if (!s) { window.location.replace('/login'); return null; }
+  return s;
+}
+
+function doLogout(ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  localStorage.removeItem(SESSION_KEY);
+  window.location.replace('/login');
+}
+
+// Inyectar token en cada petición API
+async function api(method, path, body) {
+  const s = getSession();
+  if (!s) { window.location.replace('/login'); return; }
+  const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.token };
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) { doLogout(); return; }
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
+  return r.status === 204 ? null : r.json();
+}
+
+// Inicializar sesión en el UI
+const _sess = requireAuth();
+if (_sess) {
+  const roleLabels = { superuser: 'Superuser', admin: 'Admin', reader: 'Lector' };
+  const roleClasses = { superuser: 'user-role-superuser', admin: 'user-role-admin', reader: 'user-role-reader' };
+  document.getElementById('user-fullname').textContent = _sess.full_name || _sess.username;
+  document.getElementById('topbar-username').textContent = _sess.username;
+  const roleEl = document.getElementById('user-role-badge');
+  roleEl.textContent = roleLabels[_sess.role] || _sess.role;
+  roleEl.classList.add(roleClasses[_sess.role] || '');
+  const initials = (_sess.full_name || _sess.username).substring(0, 2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+
+  // Mostrar elementos admin-only
+  if (_sess.role === 'admin' || _sess.role === 'superuser') {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
+  }
+  // Lector: ocultar botones de acción destructivos
+  if (_sess.role === 'reader') {
+    document.querySelectorAll('.write-action').forEach(el => el.style.display = 'none');
+  }
+}
+
+// ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
 const pageMeta = {
@@ -925,36 +1221,36 @@ const pageMeta = {
   logs:         { title: 'Historial de ejecuciones',   sub: 'Registro completo de ejecuciones' },
   reports:      { title: 'Logs y Archivos',            sub: 'Descarga archivos de log' },
   schedreports: { title: 'Reportes programados',       sub: 'Resúmenes automáticos por email o WhatsApp' },
+  users:        { title: 'Usuarios',                   sub: 'Gestión de cuentas y roles' },
+  profile:      { title: 'Mi perfil',                  sub: 'Configuración de tu cuenta' },
 };
 
 function goPage(p) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  document.getElementById('page-' + p).classList.add('active');
+  const pageEl = document.getElementById('page-' + p);
+  if (!pageEl) return;
+  pageEl.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(el => {
-    if (el.textContent.trim().toLowerCase().includes(pageMeta[p].title.toLowerCase().split(' ')[0]))
+    if (pageMeta[p] && el.textContent.trim().toLowerCase().includes(pageMeta[p].title.toLowerCase().split(' ')[0]))
       el.classList.add('active');
   });
-  document.getElementById('page-title').textContent = pageMeta[p].title;
-  document.getElementById('page-sub').textContent = pageMeta[p].sub;
+  const meta = pageMeta[p] || { title: p, sub: '' };
+  document.getElementById('page-title').textContent = meta.title;
+  document.getElementById('page-sub').textContent = meta.sub;
   currentPage = p;
   if (p === 'dashboard') loadDashboard();
   if (p === 'tasks') loadTasks();
   if (p === 'logs') { loadLogTaskFilter(); loadLogs(1); }
   if (p === 'reports') loadReports();
   if (p === 'schedreports') loadSchedReports();
+  if (p === 'users') loadUsers();
+  if (p === 'profile') loadProfile();
 }
 
 // ══════════════════════════════════════════════════════
-// FETCH HELPERS
+// FETCH HELPERS  (definido en bloque AUTH arriba)
 // ══════════════════════════════════════════════════════
-async function api(method, path, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(API + path, opts);
-  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
-  return r.status === 204 ? null : r.json();
-}
 
 // ══════════════════════════════════════════════════════
 // TOASTS
@@ -1396,10 +1692,23 @@ async function saveTask() {
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
+let _runNowId = null;
+let _runNowName = null;
+
 async function runNow(id, name) {
+  _runNowId = id;
+  _runNowName = name;
+  document.getElementById('run-now-task-name').textContent = name;
+  document.getElementById('run-now-skip-retry').checked = false;
+  document.getElementById('modal-run-now').classList.add('open');
+}
+
+async function confirmRunNow() {
+  const skipRetry = document.getElementById('run-now-skip-retry').checked;
+  closeModal('modal-run-now');
   try {
-    await api('POST', `/tasks/${id}/run-now`);
-    toast(`"${name}" iniciada`, 'info');
+    await api('POST', `/tasks/${_runNowId}/run-now`, { skip_retry: skipRetry });
+    toast(`"${_runNowName}" iniciada`, 'info');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -1437,7 +1746,7 @@ function setSchTab(tab) {
 // ══════════════════════════════════════════════════════
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  if (o.id === 'modal-task' || o.id === 'modal-notif-rule') return; // no cerrar al hacer click fuera
+  if (o.id === 'modal-task' || o.id === 'modal-notif-rule' || o.id === 'modal-run-now') return;
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
 
@@ -1738,6 +2047,152 @@ async function deleteSchedReport(id, name) {
     await api('DELETE', `/reports/${id}`);
     toast('Reporte eliminado', 'success');
     loadSchedReports();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// USERS
+// ══════════════════════════════════════════════════════
+let editingUserId = null;
+let resetPwUserId = null;
+
+const ROLE_LABELS = { superuser: 'Superuser', admin: 'Admin', reader: 'Lector' };
+const ROLE_CLASS  = { superuser: 'role-pill-superuser', admin: 'role-pill-admin', reader: 'role-pill-reader' };
+
+async function loadUsers() {
+  try {
+    const users = await api('GET', '/auth/users');
+    const tbody = document.getElementById('users-body');
+    if (!users || !users.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">👤</div><div class="empty-title">Sin usuarios</div></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><span style="font-family:var(--mono);font-size:12px;">${esc(u.username)}</span></td>
+        <td>${esc(u.full_name || '—')}</td>
+        <td><span style="font-size:12px;color:var(--text2);">${esc(u.email || '—')}</span></td>
+        <td><span class="role-pill ${ROLE_CLASS[u.role]||''}">${ROLE_LABELS[u.role]||u.role}</span></td>
+        <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-gray'}">${u.is_active ? 'Activo' : 'Inactivo'}</span></td>
+        <td><span style="font-size:11px;color:var(--text2);font-family:var(--mono);">${u.last_login ? fmtDate(u.last_login) : 'Nunca'}</span></td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm btn-icon" title="Editar" onclick="openEditUser(${u.id})"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn btn-ghost btn-sm btn-icon" title="Resetear contraseña" onclick="openResetPw(${u.id})"><i class="fa-solid fa-key"></i></button>
+            ${_sess && _sess.role === 'superuser' ? `<button class="btn btn-danger btn-sm btn-icon" title="Eliminar" onclick="deleteUser(${u.id}, '${esc(u.username)}')"><i class="fa-solid fa-trash"></i></button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { toast('Error cargando usuarios: ' + e.message, 'error'); }
+}
+
+function openNewUser() {
+  editingUserId = null;
+  document.getElementById('modal-user-title').textContent = 'Nuevo usuario';
+  document.getElementById('u-username').value = '';
+  document.getElementById('u-username').disabled = false;
+  document.getElementById('u-fullname').value = '';
+  document.getElementById('u-email').value = '';
+  document.getElementById('u-role').value = 'reader';
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-pw-group').style.display = '';
+  document.getElementById('u-active-group').style.display = 'none';
+  openModal('modal-user');
+}
+
+function openEditUser(id) {
+  const users = [...document.querySelectorAll('#users-body tr')];
+  // Recargamos del servidor para tener datos frescos
+  api('GET', '/auth/users/' + id).then(u => {
+    editingUserId = id;
+    document.getElementById('modal-user-title').textContent = 'Editar usuario';
+    document.getElementById('u-username').value = u.username;
+    document.getElementById('u-username').disabled = true;
+    document.getElementById('u-fullname').value = u.full_name || '';
+    document.getElementById('u-email').value = u.email || '';
+    document.getElementById('u-role').value = u.role;
+    document.getElementById('u-active').value = u.is_active ? 'true' : 'false';
+    document.getElementById('u-pw-group').style.display = 'none';
+    document.getElementById('u-active-group').style.display = '';
+    openModal('modal-user');
+  }).catch(e => toast('Error: ' + e.message, 'error'));
+}
+
+async function saveUser() {
+  const fullname = document.getElementById('u-fullname').value.trim();
+  const email    = document.getElementById('u-email').value.trim();
+  const role     = document.getElementById('u-role').value;
+
+  try {
+    if (editingUserId) {
+      const isActive = document.getElementById('u-active').value === 'true';
+      await api('PATCH', '/auth/users/' + editingUserId, { full_name: fullname, email: email || null, role, is_active: isActive });
+      toast('Usuario actualizado', 'success');
+    } else {
+      const username = document.getElementById('u-username').value.trim();
+      const password = document.getElementById('u-password').value;
+      if (!username || !password) { toast('Completa todos los campos', 'error'); return; }
+      await api('POST', '/auth/users', { username, full_name: fullname, email: email || null, password, role });
+      toast('Usuario creado', 'success');
+    }
+    closeModal('modal-user');
+    loadUsers();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function openResetPw(id) {
+  resetPwUserId = id;
+  document.getElementById('reset-pw-value').value = '';
+  openModal('modal-reset-pw');
+}
+
+async function confirmResetPassword() {
+  const pw = document.getElementById('reset-pw-value').value;
+  if (pw.length < 8) { toast('Mínimo 8 caracteres', 'error'); return; }
+  try {
+    await api('POST', '/auth/users/' + resetPwUserId + '/reset-password', { new_password: pw });
+    toast('Contraseña reseteada', 'success');
+    closeModal('modal-reset-pw');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`¿Eliminar usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+  try {
+    await api('DELETE', '/auth/users/' + id);
+    toast('Usuario eliminado', 'success');
+    loadUsers();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// PROFILE
+// ══════════════════════════════════════════════════════
+async function loadProfile() {
+  try {
+    const me = await api('GET', '/auth/me');
+    if (!me) return;
+    document.getElementById('profile-fullname').textContent = me.full_name || me.username;
+    document.getElementById('profile-username').value = me.username;
+    document.getElementById('profile-email').value = me.email || '—';
+    const roleEl = document.getElementById('profile-role');
+    roleEl.textContent = ROLE_LABELS[me.role] || me.role;
+    roleEl.className = 'user-role ' + (ROLE_CLASS[me.role] ? 'user-role-' + me.role : '');
+    const initials = (me.full_name || me.username).substring(0, 2).toUpperCase();
+    document.getElementById('profile-avatar').textContent = initials;
+  } catch(e) { toast('Error cargando perfil: ' + e.message, 'error'); }
+}
+
+async function confirmChangePassword() {
+  const current = document.getElementById('cpw-current').value;
+  const newPw   = document.getElementById('cpw-new').value;
+  if (newPw.length < 8) { toast('Mínimo 8 caracteres', 'error'); return; }
+  try {
+    await api('POST', '/auth/me/change-password', { current_password: current, new_password: newPw });
+    toast('Contraseña actualizada. Inicia sesión de nuevo.', 'success');
+    closeModal('modal-change-pw');
+    setTimeout(doLogout, 1500);
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
