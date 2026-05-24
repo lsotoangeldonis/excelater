@@ -38,7 +38,7 @@ function Write-Fail([string]$msg) { Write-Host "   ERR $msg" -ForegroundColor Re
 
 Write-Host ""
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Excelater — Deploy                    " -ForegroundColor Cyan
+Write-Host "  Excelater - Deploy                    " -ForegroundColor Cyan
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
 
 # ── 1. Detener tarea ──────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ if ($NoRestart) {
             Write-Ok "Tarea corriendo"
         } else {
             $logFile = Join-Path $ProjectDir "logs\excelater.log"
-            Write-Warn "Estado: $state — revisa: $logFile"
+            Write-Warn "Estado: $state - revisa: $logFile"
         }
     }
 }
