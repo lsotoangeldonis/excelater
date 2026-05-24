@@ -100,7 +100,8 @@ if (-not $NonInteractive) {
 # ─────────────────────────────────────────────
 Write-Step "Buscando poetry.exe..."
 
-$poetryPath = (Get-Command poetry -ErrorAction SilentlyContinue)?.Source
+$_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
+$poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
 
 if (-not $poetryPath) {
     # Ubicaciones comunes cuando no está en PATH
@@ -240,7 +241,8 @@ Write-Step "Verificando tarea/servicio existente..."
 $legacyService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($legacyService) {
     Write-Host "   Detectado servicio NSSM '$ServiceName'. Eliminando..." -ForegroundColor Yellow
-    $nssmExe = (Get-Command nssm -ErrorAction SilentlyContinue)?.Source
+    $_nssmCmd = Get-Command nssm -ErrorAction SilentlyContinue
+    $nssmExe = if ($_nssmCmd) { $_nssmCmd.Source } else { $null }
     if ($nssmExe) {
         & $nssmExe stop $ServiceName 2>$null
         Start-Sleep -Seconds 2

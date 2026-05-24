@@ -71,7 +71,8 @@ Write-Step "Actualizando código (git pull origin $Branch)..."
 
 Push-Location $ProjectDir
 
-$gitExe = (Get-Command git -ErrorAction SilentlyContinue)?.Source
+$_gitCmd = Get-Command git -ErrorAction SilentlyContinue
+$gitExe = if ($_gitCmd) { $_gitCmd.Source } else { $null }
 if (-not $gitExe) { Write-Fail "git no encontrado en PATH." }
 
 # Verificar que no hay cambios locales que bloqueen el pull
@@ -88,7 +89,7 @@ if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fail "git pull falló. Revisa la 
 
 $commitHash = (& git rev-parse --short HEAD).Trim()
 $commitMsg  = (& git log -1 --pretty="%s").Trim()
-Write-Ok "En commit: $commitHash — $commitMsg"
+Write-Ok "En commit: $commitHash - $commitMsg"
 
 Pop-Location
 
@@ -96,7 +97,8 @@ Pop-Location
 if (-not $SkipInstall) {
     Write-Step "Actualizando dependencias (poetry install)..."
 
-    $poetryPath = (Get-Command poetry -ErrorAction SilentlyContinue)?.Source
+    $_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
+    $poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
     if (-not $poetryPath) {
         $candidates = @(
             "$env:APPDATA\Python\Scripts\poetry.exe",
@@ -146,10 +148,10 @@ Write-Host ""
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  Deploy completado" -ForegroundColor Green
 Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Commit : $commitHash — $commitMsg"
+Write-Host "  Commit : $commitHash - $commitMsg"
 $logFile = Join-Path $ProjectDir "logs\excelater.log"
 Write-Host "  Log    : $logFile"
 Write-Host ""
 Write-Host "  Para ver el log en vivo:"
-Write-Host "    Get-Content '$logFile' -Wait -Tail 30" -ForegroundColor Yellow
+Write-Host ("    Get-Content `"" + $logFile + "`" -Wait -Tail 30") -ForegroundColor Yellow
 Write-Host ""
