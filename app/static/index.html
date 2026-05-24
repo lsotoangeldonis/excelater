@@ -562,6 +562,9 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
       <div class="nav-item admin-only" style="display:none" onclick="goPage('users')">
         <span class="nav-icon"><i class="fa-solid fa-users"></i></span> Usuarios
       </div>
+      <div class="nav-item superuser-only" style="display:none" onclick="goPage('config')">
+        <span class="nav-icon"><i class="fa-solid fa-sliders"></i></span> Configuración
+      </div>
     </nav>
     <div class="sidebar-footer" style="padding:0;">
       <div style="padding:10px 18px;display:flex;align-items:center;gap:6px;">
@@ -855,7 +858,72 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         </div>
       </div>
     </div>
+
+    <!-- PÁGINA: CONFIGURACIÓN (superuser) -->
+    <div class="page" id="page-config">
+      <div class="table-wrap" style="margin-bottom:18px">
+        <div class="table-header">
+          <div>
+            <div class="table-title"><i class="fa-solid fa-folder-tree"></i>&nbsp; Navegador de archivos remoto</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px">Raíces accesibles cuando alguien usa la app desde otra máquina de la red. Solo admin/superuser pueden navegarlas.</div>
+          </div>
+          <div class="table-actions">
+            <button class="btn btn-primary btn-sm" onclick="openNewFsRoot()"><i class="fa-solid fa-plus"></i> Nueva raíz</button>
+          </div>
+        </div>
+        <div id="config-fsroots-source" style="padding:10px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Etiqueta</th>
+              <th>Ruta</th>
+              <th>Subida</th>
+              <th>Estado</th>
+              <th>Creada por</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="fsroots-body">
+            <tr><td colspan="6"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </main>
+</div>
+
+<!-- MODAL: NUEVA/EDITAR RAÍZ FS -->
+<div class="modal-overlay" id="modal-fsroot">
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-fsroot-title">Nueva raíz</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-fsroot')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Etiqueta</label>
+        <input type="text" id="fsroot-label" placeholder="Ej: OneDrive Personal">
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Ruta absoluta</label>
+        <input type="text" id="fsroot-path" placeholder="C:\Users\luis\OneDrive  o  \\fileserver\reportes" style="font-family:var(--mono);font-size:12px">
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="fsroot-allow-upload">
+          <span>Permitir subir archivos a esta raíz</span>
+        </label>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;margin-left:24px">
+          Habilita el botón <i class="fa-solid fa-upload"></i> en el navegador remoto para subir archivos dentro de esta carpeta y sus subcarpetas.
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text2)">Soporta rutas locales y UNC. Se valida que exista al guardar (solo aviso, no bloquea).</div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-fsroot')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="saveFsRoot()"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL: NUEVA/EDITAR TAREA -->
@@ -1329,6 +1397,10 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <label style="font-size:12px;color:var(--text2)">Raíz:</label>
         <select id="fsb-root" class="filter-select" style="flex:1;min-width:220px" onchange="fsbGoRoot()"></select>
         <button class="btn btn-ghost btn-sm" onclick="fsbUp()" title="Subir un nivel"><i class="fa-solid fa-arrow-up"></i></button>
+        <button class="btn btn-ghost btn-sm" id="fsb-upload-btn" style="display:none" onclick="fsbPickUpload()" title="Subir archivo a esta carpeta">
+          <i class="fa-solid fa-upload"></i> Subir
+        </button>
+        <input type="file" id="fsb-upload-input" style="display:none" onchange="fsbDoUpload()">
       </div>
       <div id="fsb-breadcrumb" style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:8px;word-break:break-all"></div>
       <div id="fsb-list" style="border:1px solid var(--border);border-radius:6px;max-height:380px;overflow:auto;background:var(--bg1)">
@@ -1548,6 +1620,10 @@ if (_sess) {
   if (_sess.role === 'admin' || _sess.role === 'superuser') {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
   }
+  // Mostrar elementos superuser-only
+  if (_sess.role === 'superuser') {
+    document.querySelectorAll('.superuser-only').forEach(el => el.style.display = '');
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1604,6 +1680,7 @@ const pageMeta = {
   schedreports: { title: 'Reportes programados',       sub: 'Resúmenes automáticos por email o WhatsApp' },
   users:        { title: 'Usuarios',                   sub: 'Gestión de cuentas y roles' },
   profile:      { title: 'Mi perfil',                  sub: 'Configuración de tu cuenta' },
+  config:       { title: 'Configuración',              sub: 'Ajustes del sistema (solo superuser)' },
 };
 
 function goPage(p) {
@@ -1631,6 +1708,7 @@ function goPage(p) {
   if (p === 'schedreports') loadSchedReports();
   if (p === 'users') loadUsers();
   if (p === 'profile') loadProfile();
+  if (p === 'config') loadConfig();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2263,6 +2341,8 @@ async function fsbLoad(path) {
     const data = await api('GET', `/fs/list?path=${q}&filter=${_fsb.filter}`);
     if (!data) return;
     _fsb.path = data.path;
+    _fsb.allowUpload = !!data.allow_upload;
+    document.getElementById('fsb-upload-btn').style.display = _fsb.allowUpload ? '' : 'none';
     list.dataset.parent = data.parent || '';
     document.getElementById('fsb-breadcrumb').textContent = data.path;
     const rows = [];
@@ -2312,6 +2392,66 @@ function fsbConfirm() {
   if (!_fsb.selected || !_fsb.targetId) return;
   document.getElementById(_fsb.targetId).value = _fsb.selected.path;
   closeModal('modal-fsbrowse');
+}
+
+function fsbPickUpload() {
+  if (!_fsb.allowUpload) return;
+  const input = document.getElementById('fsb-upload-input');
+  input.value = '';
+  input.click();
+}
+
+async function fsbDoUpload() {
+  const input = document.getElementById('fsb-upload-input');
+  const file = input.files && input.files[0];
+  if (!file || !_fsb.path) return;
+  const btn = document.getElementById('fsb-upload-btn');
+  const err = document.getElementById('fsb-error');
+  err.style.display = 'none';
+  btn.disabled = true;
+  const original = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Subiendo…';
+  try {
+    const s = getSession();
+    if (!s) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    const q = encodeURIComponent(_fsb.path);
+    let r = await fetch(`${API}/fs/upload?path=${q}&overwrite=false`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + s.token },
+      body: fd,
+    });
+    if (r.status === 409) {
+      if (!confirm(`Ya existe "${file.name}" en esta carpeta.\n\n¿Sobreescribir?`)) {
+        btn.innerHTML = original; btn.disabled = false; return;
+      }
+      r = await fetch(`${API}/fs/upload?path=${q}&overwrite=true`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + s.token },
+        body: fd,
+      });
+    }
+    if (r.status === 401) { doLogout(); return; }
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail || r.statusText);
+    }
+    const out = await r.json();
+    toast(`Archivo subido: ${out.name} (${_fmtSize(out.size)})`, 'success');
+    // Recargar la carpeta y dejar el archivo seleccionado.
+    await fsbLoad(_fsb.path);
+    if (_fsb.mode === 'file') {
+      const row = document.querySelector(`#fsb-list .fsb-row[data-path="${CSS.escape(out.path)}"]`);
+      if (row) fsbPick(row);
+    }
+  } catch (e) {
+    err.textContent = e.message || 'Error al subir el archivo';
+    err.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
 }
 
 function _fmtSize(b) {
@@ -3125,6 +3265,110 @@ async function confirmChangePassword() {
     toast('Contraseña actualizada. Inicia sesión de nuevo.', 'success');
     closeModal('modal-change-pw');
     setTimeout(doLogout, 1500);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// CONFIG (superuser): navegador de archivos remoto
+// ══════════════════════════════════════════════════════
+let _editingFsRootId = null;
+
+async function loadConfig() {
+  const body = document.getElementById('fsroots-body');
+  const srcEl = document.getElementById('config-fsroots-source');
+  body.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>';
+  srcEl.textContent = '';
+  try {
+    const data = await api('GET', '/config/fs-roots');
+    if (!data) return;
+    if (data.source === 'env') {
+      srcEl.innerHTML = `<i class="fa-solid fa-circle-info" style="color:var(--yellow)"></i>&nbsp; Mostrando ${data.items.length} raíz(ces) del <code>.env</code> (fallback). Al añadir una raíz aquí, la lista del .env deja de usarse.`;
+    } else if (data.source === 'db') {
+      const fb = data.env_fallback_count
+        ? ` <span style="color:var(--text3)">— ${data.env_fallback_count} raíz(ces) en .env quedan ignoradas mientras existan registros aquí.</span>`
+        : '';
+      srcEl.innerHTML = `<i class="fa-solid fa-database" style="color:var(--accent)"></i>&nbsp; Mostrando ${data.items.length} raíz(ces) configurada(s) en base de datos.` + fb;
+    } else {
+      srcEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:var(--red)"></i>&nbsp; No hay raíces configuradas. Los clientes remotos no podrán usar el navegador de archivos.`;
+    }
+    if (!data.items.length) {
+      body.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon"><i class="fa-solid fa-folder-tree"></i></div><div class="empty-title">Sin raíces</div><div class="empty-sub">Añade la primera para habilitar el navegador remoto</div></div></td></tr>`;
+      return;
+    }
+    body.innerHTML = data.items.map(r => {
+      const isEnv = data.source === 'env';
+      const stateIcon = r.exists
+        ? '<span style="color:var(--green)"><i class="fa-solid fa-check"></i></span> Accesible'
+        : '<span style="color:var(--red)"><i class="fa-solid fa-xmark"></i></span> No accesible';
+      const uploadIcon = r.allow_upload
+        ? '<span style="color:var(--green)" title="Permite subir archivos"><i class="fa-solid fa-upload"></i> Permitida</span>'
+        : '<span style="color:var(--text3)" title="No permite subir archivos"><i class="fa-solid fa-ban"></i> Bloqueada</span>';
+      const actions = isEnv
+        ? `<span style="font-size:11px;color:var(--text3)">desde .env (read-only)</span>`
+        : `<button class="btn btn-ghost btn-sm btn-icon" title="Editar" onclick="openEditFsRoot(${r.id})"><i class="fa-solid fa-pen"></i></button>
+           <button class="btn btn-danger btn-sm btn-icon" title="Eliminar" onclick="deleteFsRoot(${r.id}, '${escJs(r.label)}')"><i class="fa-solid fa-trash"></i></button>`;
+      return `<tr>
+        <td><strong>${esc(r.label)}</strong></td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text2);word-break:break-all">${esc(r.path)}</td>
+        <td style="font-size:12px">${uploadIcon}</td>
+        <td style="font-size:12px">${stateIcon}</td>
+        <td style="font-size:11px;color:var(--text2)">${esc(r.created_by || '—')}</td>
+        <td><div style="display:flex;gap:4px">${actions}</div></td>
+      </tr>`;
+    }).join('');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function openNewFsRoot() {
+  _editingFsRootId = null;
+  document.getElementById('modal-fsroot-title').textContent = 'Nueva raíz';
+  document.getElementById('fsroot-label').value = '';
+  document.getElementById('fsroot-path').value  = '';
+  document.getElementById('fsroot-allow-upload').checked = false;
+  openModal('modal-fsroot');
+  setTimeout(() => document.getElementById('fsroot-label').focus(), 50);
+}
+
+async function openEditFsRoot(id) {
+  try {
+    const data = await api('GET', '/config/fs-roots');
+    const row = (data?.items || []).find(r => r.id === id);
+    if (!row) { toast('Raíz no encontrada', 'error'); return; }
+    _editingFsRootId = id;
+    document.getElementById('modal-fsroot-title').textContent = 'Editar raíz';
+    document.getElementById('fsroot-label').value = row.label;
+    document.getElementById('fsroot-path').value  = row.path;
+    document.getElementById('fsroot-allow-upload').checked = !!row.allow_upload;
+    openModal('modal-fsroot');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function saveFsRoot() {
+  const label = document.getElementById('fsroot-label').value.trim();
+  const path  = document.getElementById('fsroot-path').value.trim();
+  const allow_upload = document.getElementById('fsroot-allow-upload').checked;
+  if (!label || !path) { toast('Etiqueta y ruta son obligatorias', 'error'); return; }
+  try {
+    if (_editingFsRootId == null) {
+      await api('POST', '/config/fs-roots', { label, path, allow_upload });
+      toast('Raíz creada', 'success');
+    } else {
+      await api('PATCH', `/config/fs-roots/${_editingFsRootId}`, { label, path, allow_upload });
+      toast('Raíz actualizada', 'success');
+    }
+    closeModal('modal-fsroot');
+    loadServerInfo(true);   // refrescar bandera fs_browse_enabled
+    loadConfig();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteFsRoot(id, label) {
+  if (!confirm(`¿Eliminar la raíz "${label}"?\n\nLos clientes remotos dejarán de poder navegarla.`)) return;
+  try {
+    await api('DELETE', `/config/fs-roots/${id}`);
+    toast('Raíz eliminada', 'success');
+    loadServerInfo(true);
+    loadConfig();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 

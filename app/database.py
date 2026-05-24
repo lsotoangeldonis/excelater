@@ -150,6 +150,22 @@ class ReportSchedule(Base):
     created_at     = Column(DateTime, default=datetime.now)
 
 
+class FsBrowseRootDB(Base):
+    """Raíces autorizadas para el navegador de archivos remoto.
+    Gestionado desde la UI (solo superuser). Si esta tabla está vacía, el sistema
+    cae al fallback definido en FS_BROWSE_ROOTS del .env."""
+    __tablename__ = "fs_browse_roots"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    label        = Column(String, nullable=False)
+    path         = Column(String, nullable=False)
+    allow_upload = Column(Boolean, default=False)   # Permite subir archivos dentro de esta raíz
+    sort_order   = Column(Integer, default=0)
+    created_at   = Column(DateTime, default=datetime.now)
+    updated_at   = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_by   = Column(String, nullable=True)   # username del superuser que la creó
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -185,12 +201,31 @@ def _migrate_existing_db(conn):
         "ALTER TABLE tasks ADD COLUMN pipeline_config TEXT DEFAULT '{}'",
         "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
         "ALTER TABLE run_logs ADD COLUMN retry_attempt INTEGER DEFAULT 0",
+        "ALTER TABLE fs_browse_roots ADD COLUMN allow_upload INTEGER DEFAULT 0",
     ]
     for sql in migrations:
         try:
             conn.execute(text(sql))
         except Exception:
             pass  # La columna ya existe
+
+    # Tabla fs_browse_roots (creada con create_all; CREATE IF NOT EXISTS por si
+    # la DB existente es anterior).
+    try:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS fs_browse_roots (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                label        TEXT NOT NULL,
+                path         TEXT NOT NULL,
+                allow_upload INTEGER DEFAULT 0,
+                sort_order   INTEGER DEFAULT 0,
+                created_at   DATETIME,
+                updated_at   DATETIME,
+                created_by   TEXT
+            )
+        """))
+    except Exception:
+        pass
 
     # Tabla users (creada con create_all; esta migración es por si la DB
     # existente fue creada antes de que se añadiera la tabla)

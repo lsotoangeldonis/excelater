@@ -23,13 +23,14 @@ from app.config import settings
 from app.database import (
     get_db, Task, RunLog, TaskStatus, RunStatus, ScheduleType,
     NotificationRule, ReportSchedule, TriggerType, ChannelType,
+    FsBrowseRootDB,
 )
 from app.excel_engine import EngineConfig, run_update, resolve_path
 from app.scheduler import (
     add_or_replace_job, remove_job, pause_job, resume_job,
     execute_task, scheduler, cancel_run, add_report_job, remove_report_job,
 )
-from app.auth import require_reader, require_admin
+from app.auth import require_reader, require_admin, require_superuser
 
 logger = logging.getLogger(__name__)
 
@@ -1084,6 +1085,50 @@ def is_local_request(req: Request) -> bool:
     return host in _LOCAL_IPS
 
 
+async def get_active_fs_roots(db: AsyncSession) -> list[dict]:
+    """Devuelve las raíces activas para el navegador remoto.
+    Prioridad: tabla `fs_browse_roots` en DB. Si está vacía, cae al fallback
+    de FS_BROWSE_ROOTS del .env. Cada entrada se valida (path existe)."""
+    result = await db.execute(select(FsBrowseRootDB).order_by(FsBrowseRootDB.sort_order, FsBrowseRootDB.id))
+    db_rows = result.scalars().all()
+    if db_rows:
+        out: list[dict] = []
+        for r in db_rows:
+            try:
+                p = Path(r.path).resolve(strict=False)
+                if not p.exists():
+                    logger.warning("[fs-roots] DB id=%s ruta inexistente '%s' (omitida)", r.id, r.path)
+                    continue
+                out.append({
+                    "id": r.id,
+                    "label": r.label or str(p),
+                    "path": p,
+                    "raw": r.path,
+                    "allow_upload": bool(r.allow_upload),
+                    "source": "db",
+                })
+            except Exception as exc:
+                logger.warning("[fs-roots] DB id=%s ruta inválida '%s' (%s)", r.id, r.path, exc)
+        return out
+    # Fallback al .env
+    return [{**r, "id": None, "source": "env"} for r in settings.fs_browse_resolved_roots]
+
+
+def _root_containing(target: Path, roots: list[dict]) -> Optional[dict]:
+    """Devuelve la raíz que contiene `target` (resuelto), o None si está fuera de la whitelist."""
+    try:
+        t_res = target.resolve(strict=False)
+    except Exception:
+        return None
+    t = str(t_res).rstrip("\\/").lower() if sys.platform == "win32" else str(t_res).rstrip("/")
+    sep = "\\" if sys.platform == "win32" else "/"
+    for r in roots:
+        r_str = str(r["path"]).rstrip("\\/").lower() if sys.platform == "win32" else str(r["path"]).rstrip("/")
+        if t == r_str or t.startswith(r_str + sep):
+            return r
+    return None
+
+
 def _path_within_roots(target: Path, roots: list[dict]) -> bool:
     """True si `target` (ya resuelta) es igual o descendiente de alguna de las raíces resueltas.
     En Windows compara case-insensitive."""
@@ -1197,39 +1242,45 @@ async def browse_folder(request: Request):
 
 # ── Info del servidor (público para usuarios autenticados) ───────────────────
 @router.get("/server-info", dependencies=[Depends(verify_api_key)])
-async def server_info(request: Request, _user=Depends(require_reader)):
+async def server_info(request: Request, db: AsyncSession = Depends(get_db), _user=Depends(require_reader)):
     """Permite al frontend decidir entre el diálogo nativo (local) y el navegador remoto."""
+    roots = await get_active_fs_roots(db)
     return {
         "platform": sys.platform,
         "client_is_local": is_local_request(request),
-        "fs_browse_enabled": bool(settings.fs_browse_resolved_roots),
-        "fs_browse_roots_count": len(settings.fs_browse_resolved_roots),
+        "fs_browse_enabled": bool(roots),
+        "fs_browse_roots_count": len(roots),
+        "fs_browse_source": (roots[0]["source"] if roots else None),
     }
 
 
 # ── Navegador de archivos remoto (solo admin/superuser, requiere whitelist) ──
 @router.get("/fs/roots", dependencies=[Depends(verify_api_key)])
-async def fs_roots(_user=Depends(require_admin)):
+async def fs_roots(db: AsyncSession = Depends(get_db), _user=Depends(require_admin)):
     """Devuelve las raíces autorizadas para el navegador remoto."""
-    roots = settings.fs_browse_resolved_roots
+    roots = await get_active_fs_roots(db)
     if not roots:
         raise HTTPException(
             403,
-            "FS_BROWSE_ROOTS no está configurado. Pide al administrador habilitar el navegador remoto en .env.",
+            "El navegador remoto no está configurado. Pide al superusuario añadir raíces en Configuración.",
         )
-    return [{"label": r["label"], "path": str(r["path"])} for r in roots]
+    return [
+        {"label": r["label"], "path": str(r["path"]), "allow_upload": bool(r.get("allow_upload"))}
+        for r in roots
+    ]
 
 
 @router.get("/fs/list", dependencies=[Depends(verify_api_key)])
 async def fs_list(
-    path: str = Query(..., description="Ruta absoluta a listar (debe estar dentro de FS_BROWSE_ROOTS)"),
+    path: str = Query(..., description="Ruta absoluta a listar (debe estar dentro de la whitelist)"),
     filter: str = Query(default="any"),
+    db: AsyncSession = Depends(get_db),
     _user=Depends(require_admin),
 ):
     """Lista carpetas y archivos dentro de `path`, validando contra la whitelist."""
-    roots = settings.fs_browse_resolved_roots
+    roots = await get_active_fs_roots(db)
     if not roots:
-        raise HTTPException(403, "Navegador remoto deshabilitado (sin FS_BROWSE_ROOTS).")
+        raise HTTPException(403, "Navegador remoto deshabilitado (sin raíces configuradas).")
 
     try:
         target = Path(path).resolve(strict=False)
@@ -1292,15 +1343,194 @@ async def fs_list(
         # Padre solo si seguimos dentro de algún root
         parent = target.parent
         parent_path = str(parent) if parent != target and _path_within_roots(parent, roots) else None
+        owner = _root_containing(target, roots)
         return {
             "path": str(target),
             "parent": parent_path,
             "dirs": dirs,
             "files": files,
+            "allow_upload": bool(owner and owner.get("allow_upload")),
         }
 
     logger.info("[fs-list] user=%s path=%s filter=%s", _u, target, filter)
     return await asyncio.get_running_loop().run_in_executor(None, _scan)
+
+
+@router.post("/fs/upload", dependencies=[Depends(verify_api_key)])
+async def fs_upload(
+    path: str = Query(..., description="Carpeta de destino (debe estar en una raíz con allow_upload)"),
+    overwrite: bool = Query(default=False, description="Sobreescribir si ya existe"),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_admin),
+):
+    """Sube un archivo a la carpeta indicada. Validaciones:
+       - `path` debe estar dentro de una raíz con `allow_upload=True`.
+       - El archivo no puede salir de la raíz vía nombres con `..` o separadores.
+       - Si el archivo ya existe y `overwrite=False`, se rechaza."""
+    roots = await get_active_fs_roots(db)
+    if not roots:
+        raise HTTPException(403, "Navegador remoto deshabilitado.")
+
+    try:
+        target_dir = Path(path).resolve(strict=False)
+    except Exception as exc:
+        raise HTTPException(400, f"Ruta inválida: {exc}")
+
+    owner = _root_containing(target_dir, roots)
+    _u = getattr(user, "username", "<anon>") if user else "<anon>"
+    if owner is None:
+        logger.warning("[fs-upload] %s intentó subir fuera de whitelist: %s", _u, path)
+        raise HTTPException(403, "La carpeta destino está fuera de las raíces autorizadas.")
+    if not owner.get("allow_upload"):
+        logger.warning("[fs-upload] %s intentó subir a raíz sin permiso: %s", _u, owner.get("label"))
+        raise HTTPException(403, "Esta raíz no permite subir archivos.")
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise HTTPException(400, "La carpeta destino no existe.")
+
+    # Sanitizar nombre — solo el basename, sin separadores ni traversal.
+    raw_name = file.filename or "archivo"
+    safe_name = Path(raw_name).name
+    if not safe_name or safe_name in (".", "..") or "/" in raw_name or "\\" in raw_name:
+        raise HTTPException(400, "Nombre de archivo inválido.")
+    dest = (target_dir / safe_name).resolve(strict=False)
+
+    # Defensa en profundidad: tras combinar, dest debe seguir dentro de la raíz.
+    if _root_containing(dest, roots) is None:
+        raise HTTPException(400, "El destino quedaría fuera de la whitelist.")
+
+    if dest.exists() and not overwrite:
+        raise HTTPException(409, f"Ya existe un archivo con ese nombre. Usa overwrite=true para reemplazar.")
+
+    def _write_file() -> int:
+        size = 0
+        with dest.open("wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+                size += len(chunk)
+        return size
+
+    try:
+        written = await asyncio.get_running_loop().run_in_executor(None, _write_file)
+    except PermissionError as exc:
+        raise HTTPException(403, f"Sin permisos para escribir: {exc}")
+    except OSError as exc:
+        raise HTTPException(500, f"Error al escribir el archivo: {exc}")
+
+    logger.info("[fs-upload] %s subió %s (%s bytes) a %s", _u, safe_name, written, target_dir)
+    return {"path": str(dest), "name": safe_name, "size": written, "overwritten": dest.exists() and overwrite}
+
+
+# ── CRUD de raíces autorizadas (solo superuser) ──────────────────────────────
+
+class FsBrowseRootIn(BaseModel):
+    label: str
+    path: str
+    allow_upload: bool = False
+
+
+def _row_to_out(r: FsBrowseRootDB) -> dict:
+    exists = False
+    try:
+        exists = Path(r.path).exists()
+    except Exception:
+        pass
+    return {
+        "id": r.id, "label": r.label, "path": r.path, "exists": exists,
+        "allow_upload": bool(r.allow_upload),
+        "sort_order": r.sort_order or 0,
+        "created_at": r.created_at, "updated_at": r.updated_at,
+        "created_by": r.created_by,
+    }
+
+
+@router.get("/config/fs-roots", dependencies=[Depends(verify_api_key)])
+async def list_fs_roots(db: AsyncSession = Depends(get_db), _user=Depends(require_superuser)):
+    """Lista las raíces configuradas en DB y, si está vacía, las del .env (read-only)."""
+    result = await db.execute(select(FsBrowseRootDB).order_by(FsBrowseRootDB.sort_order, FsBrowseRootDB.id))
+    rows = result.scalars().all()
+    db_items = [_row_to_out(r) for r in rows]
+    env_items = []
+    if not rows:
+        for r in settings.fs_browse_resolved_roots:
+            env_items.append({
+                "id": None, "label": r["label"], "path": r["raw"],
+                "exists": Path(r["raw"]).exists(),
+                "allow_upload": bool(r.get("allow_upload")),
+                "sort_order": 0, "created_at": None, "updated_at": None, "created_by": None,
+            })
+    return {
+        "source": "db" if rows else ("env" if env_items else "none"),
+        "items": db_items or env_items,
+        "env_fallback_count": len(settings.fs_browse_resolved_roots),
+    }
+
+
+@router.post("/config/fs-roots", status_code=201, dependencies=[Depends(verify_api_key)])
+async def create_fs_root(
+    payload: FsBrowseRootIn,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_superuser),
+):
+    label = payload.label.strip()
+    path = payload.path.strip()
+    if not label or not path:
+        raise HTTPException(400, "label y path son obligatorios")
+    # No validamos que exista (puede ser una unidad de red temporalmente caída),
+    # pero sí avisamos al frontend con el flag `exists` en la respuesta.
+    row = FsBrowseRootDB(
+        label=label,
+        path=path,
+        allow_upload=bool(payload.allow_upload),
+        sort_order=0,
+        created_by=getattr(user, "username", None),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    logger.info("[fs-roots] %s creó raíz id=%s label=%r path=%r",
+                getattr(user, "username", "?"), row.id, label, path)
+    return _row_to_out(row)
+
+
+@router.patch("/config/fs-roots/{root_id}", dependencies=[Depends(verify_api_key)])
+async def update_fs_root(
+    root_id: int,
+    payload: FsBrowseRootIn,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_superuser),
+):
+    row = (await db.execute(select(FsBrowseRootDB).where(FsBrowseRootDB.id == root_id))).scalar_one_or_none()
+    if not row:
+        raise HTTPException(404, "Raíz no encontrada")
+    label = payload.label.strip()
+    path = payload.path.strip()
+    if not label or not path:
+        raise HTTPException(400, "label y path son obligatorios")
+    row.label = label
+    row.path = path
+    row.allow_upload = bool(payload.allow_upload)
+    await db.commit()
+    await db.refresh(row)
+    logger.info("[fs-roots] %s actualizó raíz id=%s", getattr(user, "username", "?"), row.id)
+    return _row_to_out(row)
+
+
+@router.delete("/config/fs-roots/{root_id}", status_code=204, dependencies=[Depends(verify_api_key)])
+async def delete_fs_root(
+    root_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_superuser),
+):
+    row = (await db.execute(select(FsBrowseRootDB).where(FsBrowseRootDB.id == root_id))).scalar_one_or_none()
+    if not row:
+        raise HTTPException(404, "Raíz no encontrada")
+    await db.delete(row)
+    await db.commit()
+    logger.info("[fs-roots] %s eliminó raíz id=%s", getattr(user, "username", "?"), root_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

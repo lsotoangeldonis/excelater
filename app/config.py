@@ -4,16 +4,23 @@ import logging
 from pathlib import Path
 from typing import List
 
-from pydantic import BaseModel, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _cfg_logger = logging.getLogger(__name__)
 
 
 class FsBrowseRoot(BaseModel):
-    """Una raíz autorizada para el navegador de archivos remoto."""
+    """Una raíz autorizada para el navegador de archivos remoto (formato .env, fallback).
+    `allow_upload` también se acepta como `allowUpload` (camelCase) en el JSON."""
     label: str
     path: str
+    allow_upload: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("allow_upload", "allowUpload"),
+    )
+
+    model_config = {"populate_by_name": True}
 
     @field_validator("label", "path")
     @classmethod
@@ -121,7 +128,12 @@ class Settings(BaseSettings):
                 if not p.exists():
                     _cfg_logger.warning("[config] FS_BROWSE_ROOTS: ruta inexistente '%s' (descartada)", r.path)
                     continue
-                out.append({"label": r.label or str(p), "path": p, "raw": r.path})
+                out.append({
+                    "label": r.label or str(p),
+                    "path": p,
+                    "raw": r.path,
+                    "allow_upload": bool(r.allow_upload),
+                })
             except Exception as exc:
                 _cfg_logger.warning("[config] FS_BROWSE_ROOTS: ruta inválida '%s' (%s)", r.path, exc)
         return out
