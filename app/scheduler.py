@@ -80,7 +80,7 @@ async def send_webhook(payload: dict):
 # EJECUCIÓN DE TAREA
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def execute_task(task_id: str):
+async def execute_task(task_id: str, config_overrides: dict | None = None):
     async with AsyncSessionLocal() as db:
         task = await db.get(Task, task_id)
         if not task or task.status != TaskStatus.ACTIVE:
@@ -136,6 +136,9 @@ async def execute_task(task_id: str):
         # ── Workflow personalizado (registry) ────────────────────────────
         from app.workflows import registry
         workflow_cfg = json.loads(task.pipeline_config or "{}")
+        # Aplicar overrides en tiempo de ejecución (ej: force_weekday para pruebas)
+        if config_overrides:
+            workflow_cfg = {**workflow_cfg, **config_overrides}
         workflow_type_name = workflow_cfg.get("workflow_type", "")
         handler_cls = registry.get(workflow_type_name)
         if handler_cls is None:

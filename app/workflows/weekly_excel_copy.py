@@ -65,7 +65,17 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         today    = datetime.now()
         cal      = today.isocalendar()
         cur_year, cur_week = cal.year, cal.week
-        is_monday = today.isoweekday() == 1
+
+        # force_weekday permite simular un día concreto sin esperar al lunes real
+        force_weekday = config.get("force_weekday")
+        effective_weekday = int(force_weekday) if force_weekday is not None else today.isoweekday()
+        is_monday = effective_weekday == 1
+
+        if force_weekday is not None:
+            logger.info(
+                f"[WeeklyExcelCopy] ⚠ Modo simulación: weekday forzado a {effective_weekday} "
+                f"({'Lunes' if is_monday else 'día no-lunes'}). Fecha real: {today.strftime('%A %d/%m/%Y')}."
+            )
 
         if not is_monday and not daily_refresh:
             logger.info(

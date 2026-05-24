@@ -688,6 +688,31 @@ async def run_now(task_id: str, db: AsyncSession = Depends(get_db)):
     return {"message": "Ejecución iniciada"}
 
 
+class WorkflowTestRunBody(BaseModel):
+    # 1=Lunes … 7=Domingo (ISO). Omitir para usar el día real.
+    force_weekday: Optional[int] = None
+
+
+@router.post("/tasks/{task_id}/test-run", dependencies=[Depends(verify_api_key)])
+async def test_run(task_id: str, body: WorkflowTestRunBody, db: AsyncSession = Depends(get_db)):
+    """Ejecución de prueba para tareas de tipo workflow, con día de la semana simulable."""
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404)
+    task_type = getattr(task, "task_type", None) or "excel"
+    if task_type != "workflow":
+        raise HTTPException(400, detail="Este endpoint solo está disponible para tareas de tipo workflow.")
+
+    overrides: dict | None = None
+    if body.force_weekday is not None:
+        if not 1 <= body.force_weekday <= 7:
+            raise HTTPException(400, detail="force_weekday debe ser un valor entre 1 (lunes) y 7 (domingo).")
+        overrides = {"force_weekday": body.force_weekday}
+
+    asyncio.create_task(execute_task(task_id, config_overrides=overrides))
+    return {"message": "Simulación iniciada", "force_weekday": body.force_weekday}
+
+
 @router.post("/admin/cleanup-stuck-runs", dependencies=[Depends(verify_api_key)])
 async def cleanup_stuck_runs(db: AsyncSession = Depends(get_db)):
     """Marca como 'failed' todos los RunLog que quedaron en 'running' sin estar activos en memoria."""

@@ -1117,6 +1117,39 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
   </div>
 </div>
 
+<!-- MODAL: SIMULAR WORKFLOW -->
+<div class="modal-overlay" id="modal-wf-test">
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <div class="modal-title"><i class="fa-solid fa-flask" style="color:#e67e22"></i>&nbsp; Simular ejecución del workflow</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-wf-test')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ejecuta el workflow ahora simulando un día específico. El log registrará qué acciones se realizaron.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:6px" id="wf-test-opt-monday">
+          <input type="radio" name="wf-test-day" value="1" checked style="margin-top:3px">
+          <div>
+            <div style="font-weight:600"><i class="fa-solid fa-calendar-week" style="color:#e67e22"></i>&nbsp; Simular Lunes</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">Copia el archivo de la semana anterior (Sem N−1) → semana actual (Sem N) y lo refresca.</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:6px" id="wf-test-opt-other">
+          <input type="radio" name="wf-test-day" value="3" style="margin-top:3px">
+          <div>
+            <div style="font-weight:600"><i class="fa-solid fa-calendar-day" style="color:var(--text2)"></i>&nbsp; Simular día no-lunes</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">Si <em>refresco diario</em> está activo: refresca el archivo de la semana actual. Si está apagado: no-op (confirma que el guard funciona).</div>
+          </div>
+        </label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-wf-test')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="runWorkflowTest()"><i class="fa-solid fa-flask"></i> Ejecutar simulación</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: VER LOG -->
 <div class="modal-overlay" id="modal-log">
   <div class="modal log-modal">
@@ -1375,6 +1408,9 @@ function renderTasks(tasks) {
           <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i> Editar</button>
           <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i> Copiar</button>
           <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i> Ejecutar</button>
+          ${(t.task_type || 'excel') === 'workflow'
+            ? `<button class="btn btn-ghost btn-sm" onclick="openWfTest('${t.id}','${escJs(t.name)}')" title="Simular ejecución con día personalizado" style="color:#e67e22"><i class="fa-solid fa-flask"></i> Simular</button>`
+            : ''}
           ${t.status==='active'
             ? `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','pause')"><i class="fa-solid fa-pause"></i> Pausar</button>`
             : `<button class="btn btn-ghost btn-sm" onclick="togglePause('${t.id}','resume')"><i class="fa-solid fa-forward"></i> Reanudar</button>`}
@@ -1972,6 +2008,28 @@ async function runNow(id, name) {
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
+// ── Simulación de workflow ─────────────────────────────
+let _wfTestTaskId = null;
+let _wfTestTaskName = null;
+
+function openWfTest(id, name) {
+  _wfTestTaskId   = id;
+  _wfTestTaskName = name;
+  // Reset a Lunes por defecto
+  document.querySelector('input[name="wf-test-day"][value="1"]').checked = true;
+  document.getElementById('modal-wf-test').classList.add('open');
+}
+
+async function runWorkflowTest() {
+  const weekday = +document.querySelector('input[name="wf-test-day"]:checked').value;
+  try {
+    await api('POST', `/tasks/${_wfTestTaskId}/test-run`, { force_weekday: weekday });
+    const label = weekday === 1 ? 'Simulación Lunes' : 'Simulación día normal';
+    toast(`"${_wfTestTaskName}" — ${label} iniciada`, 'info');
+    closeModal('modal-wf-test');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
 async function togglePause(id, action) {
   try {
     await api('POST', `/tasks/${id}/${action === 'pause' ? 'pause' : 'resume'}`);
@@ -2009,7 +2067,7 @@ function closeModal(id) {
   if (id === 'modal-log') _stopLogPoll();
 }
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  if (o.id === 'modal-task' || o.id === 'modal-notif-rule') return; // no cerrar al hacer click fuera
+  if (o.id === 'modal-task' || o.id === 'modal-notif-rule' || o.id === 'modal-wf-test') return; // no cerrar al hacer click fuera
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
 
