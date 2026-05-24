@@ -184,6 +184,8 @@ Write-Ok "Estructura válida"
 # ─────────────────────────────────────────────
 Write-Step "Configurando usuario administrador..."
 
+$needsSuperadmin = $false  # flag para aviso en resumen final
+
 $dbFile = Join-Path $ProjectDir "scheduler.db"
 $superadminScript = Join-Path $ProjectDir "scripts\create_superadmin.py"
 
@@ -207,27 +209,31 @@ except: sys.exit(1)
     }
 
     if ($hasSuperuser) {
-        Write-Host "   Ya existe un superusuario. Omitiendo creación." -ForegroundColor Yellow
-        Write-Host "   Para crear otro, ejecuta manualmente:" -ForegroundColor Yellow
-        Write-Host "   poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+        Write-Ok "Ya existe un superusuario en la base de datos"
     } else {
         if (-not $NonInteractive) {
             Write-Host ""
-            Write-Host "   No existe ningún superusuario. Se ejecutará el asistente de creación." -ForegroundColor Cyan
-            Write-Host "   Completa los datos para acceder al dashboard de Excelater." -ForegroundColor Cyan
-            Write-Host ""
-            Push-Location $ProjectDir
-            & $pythonExe scripts/create_superadmin.py
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "   WARN La creación del superusuario no se completó. Puedes ejecutarla manualmente:" -ForegroundColor Yellow
-                Write-Host "   poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+            Write-Host "   No existe ningun superusuario." -ForegroundColor Yellow
+            $ans = Read-Host "   Crear superusuario ahora? [S/n]"
+            if ($ans -notmatch '^[nN]$') {
+                Write-Host ""
+                Push-Location $ProjectDir
+                & $pythonExe scripts/create_superadmin.py
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "   WARN La creacion no se completo. Ejecuta manualmente:" -ForegroundColor Yellow
+                    Write-Host "   poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+                    $needsSuperadmin = $true
+                } else {
+                    Write-Ok "Superusuario creado"
+                }
+                Pop-Location
             } else {
-                Write-Ok "Superusuario creado"
+                $needsSuperadmin = $true
+                Write-Warn "Omitido. Recuerda crear el superusuario antes de usar el dashboard."
             }
-            Pop-Location
         } else {
-            Write-Host "   Modo no-interactivo: omitiendo creación de superusuario." -ForegroundColor Yellow
-            Write-Host "   Ejecuta manualmente: poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+            $needsSuperadmin = $true
+            Write-Warn "Modo no-interactivo: sin superusuario. Se recomienda crear uno tras iniciar el servicio."
         }
     }
 }
@@ -396,7 +402,17 @@ Write-Host "    Start-ScheduledTask      -TaskName $ServiceName"
 Write-Host "    Stop-ScheduledTask       -TaskName $ServiceName"
 Write-Host "    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:`$false"
 Write-Host ""
-Write-Host "  NOTA: La tarea arranca automáticamente cuando $env:USERNAME inicia sesión."
-Write-Host "  Si necesitas ejecutarla sin sesión activa, considera mover los archivos"
+Write-Host "  NOTA: La tarea arranca automaticamente cuando $env:USERNAME inicia sesion."
+Write-Host "  Si necesitas ejecutarla sin sesion activa, considera mover los archivos"
 Write-Host "  Excel a una ruta local fuera de OneDrive Files On-Demand."
 Write-Host ""
+
+if ($needsSuperadmin) {
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  PENDIENTE: No existe ningun superusuario en la base de datos." -ForegroundColor Red
+    Write-Host "  El dashboard no sera accesible hasta que crees uno." -ForegroundColor Red
+    Write-Host "  Ejecuta:" -ForegroundColor Yellow
+    Write-Host "    poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host ""
+}

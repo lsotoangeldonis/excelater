@@ -93,21 +93,22 @@ Write-Ok "En commit: $commitHash - $commitMsg"
 
 Pop-Location
 
+# ── Detectar poetry (necesario para install y para verificar superadmin) ──────
+$_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
+$poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
+if (-not $poetryPath) {
+    $candidates = @(
+        "$env:APPDATA\Python\Scripts\poetry.exe",
+        "$env:APPDATA\pypoetry\venv\Scripts\poetry.exe",
+        "$env:LOCALAPPDATA\Programs\Python\Scripts\poetry.exe"
+    )
+    foreach ($c in $candidates) { if (Test-Path $c) { $poetryPath = $c; break } }
+}
+if (-not $poetryPath) { Write-Fail "poetry.exe no encontrado." }
+
 # ── 3. Dependencias ────────────────────────────────────────────────────────────
 if (-not $SkipInstall) {
     Write-Step "Actualizando dependencias (poetry install)..."
-
-    $_poetryCmd = Get-Command poetry -ErrorAction SilentlyContinue
-    $poetryPath = if ($_poetryCmd) { $_poetryCmd.Source } else { $null }
-    if (-not $poetryPath) {
-        $candidates = @(
-            "$env:APPDATA\Python\Scripts\poetry.exe",
-            "$env:APPDATA\pypoetry\venv\Scripts\poetry.exe",
-            "$env:LOCALAPPDATA\Programs\Python\Scripts\poetry.exe"
-        )
-        foreach ($c in $candidates) { if (Test-Path $c) { $poetryPath = $c; break } }
-    }
-    if (-not $poetryPath) { Write-Fail "poetry.exe no encontrado." }
 
     Push-Location $ProjectDir
     & $poetryPath install --without dev
@@ -154,4 +155,25 @@ Write-Host "  Log    : $logFile"
 Write-Host ""
 Write-Host "  Para ver el log en vivo:"
 Write-Host ("    Get-Content `"" + $logFile + "`" -Wait -Tail 30") -ForegroundColor Yellow
+
+# ── Verificar superadmin ──────────────────────────────────────────────────────
+$dbFile = Join-Path $ProjectDir "scheduler.db"
+$hasSuperuser = $false
+if (Test-Path $dbFile) {
+    Push-Location $ProjectDir
+    & $poetryPath run python -c "import sqlite3,sys; c=sqlite3.connect('scheduler.db'); r=c.execute(\"SELECT COUNT(*) FROM users WHERE role='superuser'\").fetchone(); sys.exit(0 if r[0]>0 else 1)" 2>$null
+    $hasSuperuser = ($LASTEXITCODE -eq 0)
+    Pop-Location
+}
+
+if (-not $hasSuperuser) {
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Red
+    Write-Host "  PENDIENTE: No existe ningun superusuario en la base de datos." -ForegroundColor Red
+    Write-Host "  El dashboard no sera accesible hasta que crees uno." -ForegroundColor Red
+    Write-Host "  Ejecuta:" -ForegroundColor Yellow
+    Write-Host "    poetry run python scripts/create_superadmin.py" -ForegroundColor Yellow
+    Write-Host "  ================================================================" -ForegroundColor Red
+}
+
 Write-Host ""
