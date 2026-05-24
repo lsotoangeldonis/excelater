@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('d:/dev/projects/Excelater/scheduler.db'\\); print\\(c.execute\\(\\\\\"SELECT sql FROM sqlite_master WHERE type='table' AND name='notification_rules'\\\\\"\\).fetchone\\(\\)[0]\\)\")"
+    ]
+  }
+}
