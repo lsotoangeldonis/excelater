@@ -252,18 +252,38 @@ if ($legacyService) {
     Write-Ok "Servicio NSSM anterior eliminado"
 }
 
-# Si ya existe la tarea programada, eliminarla para recrearla limpiamente
+# Verificar si la tarea ya existe con el mismo puerto (evitar recrear innecesariamente)
 $existingTask = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+$needsRecreate = $false
 if ($existingTask) {
-    Write-Host "   Tarea programada '$ServiceName' ya existe. Reemplazando..." -ForegroundColor Yellow
-    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
-    Write-Ok "Tarea anterior eliminada"
+    $existingArg = $existingTask.Actions[0].Arguments
+    if ($existingArg -match "--port\s+$Port\b") {
+        Write-Ok "Tarea '$ServiceName' ya existe con puerto $Port — se actualizará en el registro"
+    } else {
+        Write-Host "   Puerto cambió o tarea desactualizada. Recreando..." -ForegroundColor Yellow
+        $needsRecreate = $true
+    }
+    # Detener si está corriendo antes de modificarla
+    if ($existingTask.State -eq "Running") {
+        Stop-ScheduledTask -TaskName $ServiceName
+        Start-Sleep -Seconds 2
+        Write-Ok "Tarea detenida para actualización"
+    }
+    if ($needsRecreate) {
+        Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
+        Write-Ok "Tarea anterior eliminada"
+    }
 }
 
 # ─────────────────────────────────────────────
 # 6. Registrar tarea programada (Task Scheduler)
 # ─────────────────────────────────────────────
 Write-Step "Registrando tarea programada '$ServiceName'..."
+
+# Si ya existe y no necesita recrearse, saltamos el registro
+if ($existingTask -and -not $needsRecreate) {
+    Write-Ok "Tarea ya registrada correctamente. Sin cambios."
+} else {
 
 $logsDir = Join-Path $ProjectDir "logs"
 $logFile = Join-Path $logsDir "excelater.log"
@@ -288,15 +308,16 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew
 
 Register-ScheduledTask `
-    -TaskName $ServiceName `
-    -Action   $action `
-    -Trigger  $trigger `
-    -Settings $settings `
-    -RunLevel Highest `
-    -User     $env:USERNAME `
-    -Force | Out-Null
+        -TaskName $ServiceName `
+        -Action   $action `
+        -Trigger  $trigger `
+        -Settings $settings `
+        -RunLevel Highest `
+        -User     $env:USERNAME `
+        -Force | Out-Null
 
-Write-Ok "Tarea registrada para usuario: $env:USERNAME"
+    Write-Ok "Tarea registrada para usuario: $env:USERNAME"
+}
 
 # ─────────────────────────────────────────────
 # 7. Regla de Firewall
@@ -307,8 +328,14 @@ $firewallRuleName = "Excelater API"
 if ($doFirewall) {
     $existing = Get-NetFirewallRule -DisplayName $firewallRuleName -ErrorAction SilentlyContinue
     if ($existing) {
-        Set-NetFirewallRule -DisplayName $firewallRuleName -LocalPort $Port | Out-Null
-        Write-Host "   Regla '$firewallRuleName' actualizada -> TCP/$Port" -ForegroundColor Yellow
+        # Verificar si ya tiene el puerto correcto
+        $existingPort = ($existing | Get-NetFirewallPortFilter).LocalPort
+        if ($existingPort -eq $Port.ToString()) {
+            Write-Ok "Regla '$firewallRuleName' ya existe con TCP/$Port — sin cambios"
+        } else {
+            Set-NetFirewallRule -DisplayName $firewallRuleName -LocalPort $Port | Out-Null
+            Write-Ok "Regla '$firewallRuleName' actualizada: TCP/$existingPort -> TCP/$Port"
+        }
     } else {
         New-NetFirewallRule -DisplayName $firewallRuleName -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow | Out-Null
         Write-Ok "Regla '$firewallRuleName' creada -> TCP/$Port"
@@ -333,14 +360,19 @@ if (-not $doStart) {
     Write-Host "   Omitido (-SkipStart). Inicia manualmente:" -ForegroundColor Yellow
     Write-Host "   Start-ScheduledTask -TaskName $ServiceName" -ForegroundColor Yellow
 } else {
-    Start-ScheduledTask -TaskName $ServiceName
-    Start-Sleep -Seconds 4
-
-    $taskState = (Get-ScheduledTask -TaskName $ServiceName).State
-    if ($taskState -eq "Running") {
-        Write-Ok "Tarea corriendo"
+    $currentState = (Get-ScheduledTask -TaskName $ServiceName).State
+    if ($currentState -eq "Running") {
+        Write-Ok "Tarea ya está corriendo"
     } else {
-        Write-Host "   WARN Estado: $taskState — revisa: $logFile" -ForegroundColor Yellow
+        Start-ScheduledTask -TaskName $ServiceName
+        Start-Sleep -Seconds 4
+
+        $taskState = (Get-ScheduledTask -TaskName $ServiceName).State
+        if ($taskState -eq "Running") {
+            Write-Ok "Tarea corriendo"
+        } else {
+            Write-Host "   WARN Estado: $taskState — revisa: $logFile" -ForegroundColor Yellow
+        }
     }
 }
 
