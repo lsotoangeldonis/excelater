@@ -185,7 +185,6 @@ def _migrate_existing_db(conn):
         "ALTER TABLE tasks ADD COLUMN pipeline_config TEXT DEFAULT '{}'",
         "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
         "ALTER TABLE run_logs ADD COLUMN retry_attempt INTEGER DEFAULT 0",
-        "ALTER TABLE run_logs ADD COLUMN pivots_completed TEXT",
     ]
     for sql in migrations:
         try:
