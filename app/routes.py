@@ -378,6 +378,8 @@ class WeeklyExcelCopyTaskCreate(BaseModel):
     refresh_timeout: int = 300
     max_retries: int = 0
     retry_delay_s: int = 60
+    # Lista de guardas de tabla dinámica. Cada elemento: {"sheet": str, "pivot": str, "min_gap": int}
+    pivot_guards: list[dict] = []
 
 
 @router.post(
@@ -417,6 +419,7 @@ async def create_weekly_excel_copy_task(
         "fail_if_source_missing": body.fail_if_source_missing,
         "excel_visible": body.excel_visible,
         "refresh_timeout": body.refresh_timeout,
+        "pivot_guards": body.pivot_guards,
     }
 
     task = Task(

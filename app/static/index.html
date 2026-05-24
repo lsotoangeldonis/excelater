@@ -924,6 +924,29 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             </div>
             <label class="toggle"><input type="checkbox" id="f-wf-visible"><span class="toggle-slider"></span></label>
           </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div>Expansión automática de tabla dinámica</div>
+              <div class="toggle-desc">Antes de refrescar, inserta columnas vacías a la derecha de la tabla dinámica para evitar que los datos adyacentes la bloqueen.</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="f-wf-pg-enabled" onchange="document.getElementById('f-wf-pg-fields').style.display=this.checked?'':'none'"><span class="toggle-slider"></span></label>
+          </div>
+          <div id="f-wf-pg-fields" style="display:none;padding:8px 0 4px">
+            <div style="display:flex;gap:12px;">
+              <div class="form-group" style="flex:2">
+                <label>Hoja</label>
+                <input id="f-wf-pg-sheet" type="text" value="Venta" placeholder="Venta">
+              </div>
+              <div class="form-group" style="flex:2">
+                <label>Nombre de la tabla dinámica</label>
+                <input id="f-wf-pg-pivot" type="text" value="TablaDinámica3" placeholder="TablaDinámica3">
+              </div>
+              <div class="form-group" style="flex:1">
+                <label>Columnas mínimas libres</label>
+                <input id="f-wf-pg-gap" type="number" min="1" max="20" value="2">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1836,6 +1859,18 @@ async function openEditTask(id) {
     document.getElementById('f-wf-fail-missing').checked  = pc.fail_if_source_missing !== false;
     document.getElementById('f-wf-visible').checked       = !!pc.excel_visible;
     document.getElementById('f-wf-timeout').value         = pc.refresh_timeout ?? 300;
+    const pg0 = (pc.pivot_guards || [])[0];
+    document.getElementById('f-wf-pg-enabled').checked = !!pg0;
+    document.getElementById('f-wf-pg-fields').style.display = pg0 ? '' : 'none';
+    if (pg0) {
+      document.getElementById('f-wf-pg-sheet').value = pg0.sheet ?? 'Venta';
+      document.getElementById('f-wf-pg-pivot').value = pg0.pivot ?? 'TablaDinámica3';
+      document.getElementById('f-wf-pg-gap').value   = pg0.min_gap ?? 2;
+    } else {
+      document.getElementById('f-wf-pg-sheet').value = 'Venta';
+      document.getElementById('f-wf-pg-pivot').value = 'TablaDinámica3';
+      document.getElementById('f-wf-pg-gap').value   = 2;
+    }
   } else {
     document.getElementById('f-path').value = t.file_path;
     document.getElementById('f-conns').checked = t.refresh_connections;
@@ -1897,6 +1932,7 @@ async function saveTask() {
       if (!patterns.length) { toast('Al menos un patrón de nombre es obligatorio', 'error'); return; }
       const invalidPat = patterns.find(p => !p.includes('{week}'));
       if (invalidPat) { toast(`El patrón "${invalidPat}" no contiene {week}`, 'error'); return; }
+      const pgEnabled = document.getElementById('f-wf-pg-enabled').checked;
       const workflowCfg = {
         folder,
         file_patterns: patterns,
@@ -1905,6 +1941,11 @@ async function saveTask() {
         fail_if_source_missing: document.getElementById('f-wf-fail-missing').checked,
         excel_visible:          document.getElementById('f-wf-visible').checked,
         refresh_timeout:       +document.getElementById('f-wf-timeout').value,
+        pivot_guards: pgEnabled ? [{
+          sheet:   document.getElementById('f-wf-pg-sheet').value.trim() || 'Venta',
+          pivot:   document.getElementById('f-wf-pg-pivot').value.trim() || 'TablaDinámica3',
+          min_gap: +document.getElementById('f-wf-pg-gap').value || 2,
+        }] : [],
       };
       if (editingTaskId) {
         await api('PUT', `/tasks/${editingTaskId}`, {

@@ -97,6 +97,7 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
+                pivot_guards=config.get("pivot_guards", []),
                 logger=logger,
                 t0=t0,
             )
@@ -125,6 +126,7 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         fail_missing: bool,
         excel_visible: bool,
         refresh_timeout: int,
+        pivot_guards: list,
         logger: logging.Logger,
         t0: float,
     ) -> bool:
@@ -143,10 +145,13 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
+                pivot_guards=pivot_guards,
                 logger=logger,
             )
         else:
             # daily_refresh=True (ya validado antes de llegar aquí)
+            if pivot_guards and cur_path.exists():
+                self._expand_pivot_space(str(cur_path), pivot_guards, logger)
             return self._refresh_file(
                 file_path=str(cur_path),
                 label=cur_name,
@@ -167,6 +172,7 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         fail_missing: bool,
         excel_visible: bool,
         refresh_timeout: int,
+        pivot_guards: list,
         logger: logging.Logger,
     ) -> bool:
         """Lunes: copia Sem N-1 → Sem N (si no existe) y refresca."""
@@ -213,6 +219,8 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 return False
 
         # Refrescar el archivo de la semana actual
+        if pivot_guards:
+            self._expand_pivot_space(str(cur_path), pivot_guards, logger)
         return self._refresh_file(
             file_path=str(cur_path),
             label=cur_name,
@@ -274,3 +282,140 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 f"[WeeklyExcelCopy] Error al refrescar '{label}': {result.error_msg}"
             )
         return result.success
+
+    # ── Expansión automática de tabla dinámica ────────────────────────────────
+
+    def _expand_pivot_space(
+        self,
+        file_path: str,
+        guards: list,
+        logger: logging.Logger,
+    ) -> None:
+        """
+        Verifica que haya al menos `min_gap` columnas vacías a la derecha de cada
+        tabla dinámica configurada en `guards`. Inserta columnas si es necesario.
+        Los errores no son fatales: se loguean y el flujo continúa.
+
+        Cada guard: {"sheet": str, "pivot": str, "min_gap": int (default 2)}
+        """
+        if not guards:
+            return
+
+        try:
+            import pythoncom
+            import win32com.client as win32
+        except ImportError:
+            logger.warning(
+                "[WeeklyExcelCopy][expand] pywin32 no disponible — "
+                "se omite la expansión de tabla dinámica."
+            )
+            return
+
+        pythoncom.CoInitialize()
+        xl = None
+        wb = None
+        try:
+            xl = win32.Dispatch("Excel.Application")
+            xl.Visible = False
+            xl.DisplayAlerts = False
+            xl.AskToUpdateLinks = False
+
+            wb = xl.Workbooks.Open(file_path, UpdateLinks=0, ReadOnly=False)
+            modified = False
+
+            for guard in guards:
+                sheet_name = guard.get("sheet", "")
+                pivot_name = guard.get("pivot", "")
+                min_gap    = int(guard.get("min_gap", 2))
+
+                if not sheet_name or not pivot_name:
+                    logger.warning(
+                        f"[WeeklyExcelCopy][expand] Guard incompleto "
+                        f"(sheet='{sheet_name}', pivot='{pivot_name}') — se omite."
+                    )
+                    continue
+
+                try:
+                    ws = wb.Sheets(sheet_name)
+                except Exception:
+                    logger.warning(
+                        f"[WeeklyExcelCopy][expand] Hoja '{sheet_name}' no encontrada — se omite."
+                    )
+                    continue
+
+                try:
+                    pt = ws.PivotTables(pivot_name)
+                except Exception:
+                    logger.warning(
+                        f"[WeeklyExcelCopy][expand] Tabla dinámica '{pivot_name}' "
+                        f"no encontrada en hoja '{sheet_name}' — se omite."
+                    )
+                    continue
+
+                pivot_rng      = pt.TableRange2
+                pivot_last_col = pivot_rng.Column + pivot_rng.Columns.Count - 1
+                pivot_first_row = pivot_rng.Row
+                pivot_last_row  = pivot_rng.Row + pivot_rng.Rows.Count - 1
+
+                logger.info(
+                    f"[WeeklyExcelCopy][expand] '{pivot_name}' ('{sheet_name}'): "
+                    f"cols {pivot_rng.Column}–{pivot_last_col}, "
+                    f"filas {pivot_first_row}–{pivot_last_row}."
+                )
+
+                # Medir cuántas columnas vacías hay a la derecha del pivot
+                gap = 0
+                for offset in range(1, 50):
+                    col_idx = pivot_last_col + offset
+                    check = ws.Range(
+                        ws.Cells(pivot_first_row, col_idx),
+                        ws.Cells(pivot_last_row, col_idx),
+                    )
+                    if xl.WorksheetFunction.CountA(check) > 0:
+                        break
+                    gap += 1
+
+                cols_to_insert = max(0, min_gap - gap)
+                logger.info(
+                    f"[WeeklyExcelCopy][expand] Gap actual: {gap} col. "
+                    f"Mínimo requerido: {min_gap}. "
+                    + (f"Insertando {cols_to_insert} columna(s)." if cols_to_insert > 0
+                       else "Sin cambios necesarios.")
+                )
+
+                if cols_to_insert > 0:
+                    # Insertar antes del primer bloque bloqueador
+                    insert_at = pivot_last_col + gap + 1
+                    insert_rng = ws.Range(
+                        ws.Cells(1, insert_at),
+                        ws.Cells(1_048_576, insert_at + cols_to_insert - 1),
+                    )
+                    insert_rng.Insert(Shift=-4161)  # xlShiftToRight
+                    logger.info(
+                        f"[WeeklyExcelCopy][expand] {cols_to_insert} columna(s) insertada(s) "
+                        f"en col {insert_at} de '{sheet_name}'."
+                    )
+                    modified = True
+
+            if modified:
+                wb.Save()
+                logger.info("[WeeklyExcelCopy][expand] Archivo guardado tras expansión.")
+
+            wb.Close(False)
+
+        except Exception:
+            logger.error(
+                f"[WeeklyExcelCopy][expand] Error inesperado:\n{traceback.format_exc()}"
+            )
+            if wb:
+                try:
+                    wb.Close(False)
+                except Exception:
+                    pass
+        finally:
+            if xl:
+                try:
+                    xl.Quit()
+                except Exception:
+                    pass
+            pythoncom.CoUninitialize()
