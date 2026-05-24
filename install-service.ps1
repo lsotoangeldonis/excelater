@@ -196,15 +196,20 @@ if (-not (Test-Path $superadminScript)) {
     $hasSuperuser = $false
     if (Test-Path $dbFile) {
         try {
-            $checkResult = & $pythonExe -c @"
+            $tmpPy = [System.IO.Path]::GetTempFileName() + ".py"
+            @'
 import sqlite3, sys
 try:
-    c = sqlite3.connect(r'$dbFile')
+    import sys, os
+    db = sys.argv[1]
+    c = sqlite3.connect(db)
     r = c.execute("SELECT COUNT(*) FROM users WHERE role='superuser'").fetchone()
     sys.exit(0 if r[0] > 0 else 1)
 except: sys.exit(1)
-"@
+'@ | Set-Content -Path $tmpPy -Encoding ASCII
+            & $pythonExe $tmpPy $dbFile 2>$null
             $hasSuperuser = ($LASTEXITCODE -eq 0)
+            Remove-Item $tmpPy -ErrorAction SilentlyContinue
         } catch { $hasSuperuser = $false }
     }
 
