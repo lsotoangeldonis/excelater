@@ -303,8 +303,14 @@ if ($existingTask -and -not $needsRecreate) {
 $logsDir = Join-Path $ProjectDir "logs"
 $logFile = Join-Path $logsDir "excelater.log"
 
-# Wrappear con cmd /c para redirigir stdout+stderr al log
-$argument = "/c `"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port $Port >> `"$logFile`" 2>&1"
+# Crear directorio de logs antes de registrar la tarea
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    Write-Ok "Directorio de logs creado: $logsDir"
+}
+
+# cmd /c con comillas externas para que >> y 2>&1 sean operadores shell
+$argument = "/c `"`"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port $Port >> `"$logFile`" 2>&1`""
 
 $action = New-ScheduledTaskAction `
     -Execute          "cmd.exe" `
