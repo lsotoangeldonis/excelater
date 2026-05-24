@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, desc
@@ -1027,7 +1027,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILE BROWSER (selector nativo de Windows)
+# FILE BROWSER (selector nativo de Windows + navegador remoto)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _FILTER_MAP = {
@@ -1036,13 +1036,82 @@ _FILTER_MAP = {
     "any":    "Todos los archivos (*.*)|*.*",
 }
 
+_FILTER_EXT = {
+    "excel":  {".xlsx", ".xlsm", ".xls"},
+    "access": {".accdb", ".mdb"},
+    "any":    None,
+}
+
+
+def _collect_local_ips() -> set[str]:
+    """Enumera todas las IPs de las NICs del host para detectar peticiones 'mismo equipo'."""
+    import socket
+    ips: set[str] = {"127.0.0.1", "::1", "localhost"}
+    # Fast path con stdlib
+    try:
+        host = socket.gethostname()
+        ips.add(host)
+        for info in socket.getaddrinfo(host, None):
+            addr = info[4][0]
+            ips.add(addr.split("%")[0])
+    except Exception as exc:
+        logger.warning("[local-ips] getaddrinfo: %s", exc)
+    # Camino robusto: psutil si está disponible
+    try:
+        import psutil  # type: ignore
+        for _iface, addrs in psutil.net_if_addrs().items():
+            for a in addrs:
+                if a.family in (socket.AF_INET, socket.AF_INET6):
+                    ips.add(a.address.split("%")[0])
+    except ImportError:
+        # psutil no es dependencia obligatoria; getaddrinfo suele alcanzar
+        pass
+    except Exception as exc:
+        logger.warning("[local-ips] psutil: %s", exc)
+    return ips
+
+
+_LOCAL_IPS: set[str] = _collect_local_ips()
+
+
+def is_local_request(req: Request) -> bool:
+    """True cuando la petición proviene del mismo equipo donde corre el servidor.
+    Cubre loopback, ::1, IPv4 mapeado en IPv6, y acceso vía la propia IP LAN del host."""
+    host = (req.client.host if req.client else "") or ""
+    host = host.split("%")[0]
+    if host.startswith("::ffff:"):
+        host = host[7:]
+    return host in _LOCAL_IPS
+
+
+def _path_within_roots(target: Path, roots: list[dict]) -> bool:
+    """True si `target` (ya resuelta) es igual o descendiente de alguna de las raíces resueltas.
+    En Windows compara case-insensitive."""
+    try:
+        target_resolved = target.resolve(strict=False)
+    except Exception:
+        return False
+    t = str(target_resolved).rstrip("\\/").lower() if sys.platform == "win32" else str(target_resolved).rstrip("/")
+    for r in roots:
+        r_str = str(r["path"]).rstrip("\\/").lower() if sys.platform == "win32" else str(r["path"]).rstrip("/")
+        if t == r_str:
+            return True
+        sep = "\\" if sys.platform == "win32" else "/"
+        if t.startswith(r_str + sep):
+            return True
+    return False
+
 
 @router.get("/browse-file", dependencies=[Depends(verify_api_key)])
-async def browse_file(filter: str = Query(default="any")):
+async def browse_file(request: Request, filter: str = Query(default="any")):
     """Abre el diálogo de apertura de archivos de Windows y devuelve la ruta seleccionada.
     Solo funciona cuando el servidor corre en Windows en la misma máquina que el usuario."""
     if sys.platform != "win32":
         raise HTTPException(400, "El selector de archivos solo está disponible en Windows")
+    if not is_local_request(request):
+        # El diálogo nativo se dibujaría en la sesión del host, no en el cliente remoto.
+        # El frontend debe usar /api/fs/list en su lugar.
+        raise HTTPException(409, "remote_not_supported")
 
     file_filter = _FILTER_MAP.get(filter, _FILTER_MAP["any"])
     ps_script = (
@@ -1083,10 +1152,12 @@ async def browse_file(filter: str = Query(default="any")):
 
 
 @router.get("/browse-folder", dependencies=[Depends(verify_api_key)])
-async def browse_folder():
+async def browse_folder(request: Request):
     """Abre el diálogo de selección de carpetas de Windows y devuelve la ruta seleccionada."""
     if sys.platform != "win32":
         raise HTTPException(400, "El selector de carpetas solo está disponible en Windows")
+    if not is_local_request(request):
+        raise HTTPException(409, "remote_not_supported")
 
     ps_script = (
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
@@ -1122,6 +1193,114 @@ async def browse_folder():
     except Exception as exc:
         logger.error("[browse-folder] Error: %s", exc)
         raise HTTPException(500, f"Error al abrir el selector de carpetas: {exc}")
+
+
+# ── Info del servidor (público para usuarios autenticados) ───────────────────
+@router.get("/server-info", dependencies=[Depends(verify_api_key)])
+async def server_info(request: Request, _user=Depends(require_reader)):
+    """Permite al frontend decidir entre el diálogo nativo (local) y el navegador remoto."""
+    return {
+        "platform": sys.platform,
+        "client_is_local": is_local_request(request),
+        "fs_browse_enabled": bool(settings.fs_browse_resolved_roots),
+        "fs_browse_roots_count": len(settings.fs_browse_resolved_roots),
+    }
+
+
+# ── Navegador de archivos remoto (solo admin/superuser, requiere whitelist) ──
+@router.get("/fs/roots", dependencies=[Depends(verify_api_key)])
+async def fs_roots(_user=Depends(require_admin)):
+    """Devuelve las raíces autorizadas para el navegador remoto."""
+    roots = settings.fs_browse_resolved_roots
+    if not roots:
+        raise HTTPException(
+            403,
+            "FS_BROWSE_ROOTS no está configurado. Pide al administrador habilitar el navegador remoto en .env.",
+        )
+    return [{"label": r["label"], "path": str(r["path"])} for r in roots]
+
+
+@router.get("/fs/list", dependencies=[Depends(verify_api_key)])
+async def fs_list(
+    path: str = Query(..., description="Ruta absoluta a listar (debe estar dentro de FS_BROWSE_ROOTS)"),
+    filter: str = Query(default="any"),
+    _user=Depends(require_admin),
+):
+    """Lista carpetas y archivos dentro de `path`, validando contra la whitelist."""
+    roots = settings.fs_browse_resolved_roots
+    if not roots:
+        raise HTTPException(403, "Navegador remoto deshabilitado (sin FS_BROWSE_ROOTS).")
+
+    try:
+        target = Path(path).resolve(strict=False)
+    except Exception as exc:
+        raise HTTPException(400, f"Ruta inválida: {exc}")
+
+    _u = getattr(_user, "username", "<anon>") if _user else "<anon>"
+    if not _path_within_roots(target, roots):
+        logger.warning("[fs-list] user=%s intentó listar fuera de whitelist: %s", _u, path)
+        raise HTTPException(403, "La ruta está fuera de las raíces autorizadas.")
+
+    if not target.exists():
+        raise HTTPException(404, "La ruta no existe.")
+    if not target.is_dir():
+        raise HTTPException(400, "La ruta no es una carpeta.")
+
+    allowed_ext = _FILTER_EXT.get(filter, None)
+    allow_hidden = settings.fs_browse_allow_hidden
+
+    def _scan() -> dict:
+        dirs: list[dict] = []
+        files: list[dict] = []
+        try:
+            entries = list(target.iterdir())
+        except PermissionError:
+            raise HTTPException(403, "Sin permisos para listar esta carpeta.")
+        for entry in entries:
+            name = entry.name
+            if not allow_hidden and name.startswith("."):
+                continue
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                continue
+            if is_dir:
+                # Filtrar carpetas ocultas de Windows (basado en atributo)
+                if not allow_hidden and sys.platform == "win32":
+                    try:
+                        import stat
+                        if entry.stat().st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN:  # type: ignore[attr-defined]
+                            continue
+                    except Exception:
+                        pass
+                dirs.append({"name": name, "path": str(entry)})
+            else:
+                if allowed_ext and entry.suffix.lower() not in allowed_ext:
+                    continue
+                try:
+                    st = entry.stat()
+                    files.append({
+                        "name": name,
+                        "path": str(entry),
+                        "size": st.st_size,
+                        "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+                    })
+                except OSError:
+                    continue
+        dirs.sort(key=lambda d: d["name"].lower())
+        files.sort(key=lambda f: f["name"].lower())
+        # Padre solo si seguimos dentro de algún root
+        parent = target.parent
+        parent_path = str(parent) if parent != target and _path_within_roots(parent, roots) else None
+        return {
+            "path": str(target),
+            "parent": parent_path,
+            "dirs": dirs,
+            "files": files,
+        }
+
+    logger.info("[fs-list] user=%s path=%s filter=%s", _u, target, filter)
+    return await asyncio.get_running_loop().run_in_executor(None, _scan)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

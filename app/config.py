@@ -1,6 +1,24 @@
 """app/config.py — Configuración centralizada vía variables de entorno o .env"""
+import json
+import logging
 from pathlib import Path
+from typing import List
+
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_cfg_logger = logging.getLogger(__name__)
+
+
+class FsBrowseRoot(BaseModel):
+    """Una raíz autorizada para el navegador de archivos remoto."""
+    label: str
+    path: str
+
+    @field_validator("label", "path")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        return v.strip()
 
 
 class Settings(BaseSettings):
@@ -53,6 +71,27 @@ class Settings(BaseSettings):
     # CORS (separar múltiples orígenes con coma; "*" = todos)
     cors_origins: str = "*"
 
+    # Navegador de archivos remoto (clientes que no son el host)
+    # JSON con la whitelist de raíces accesibles. Ejemplo:
+    #   FS_BROWSE_ROOTS=[{"label":"OneDrive","path":"C:\\Users\\luis\\OneDrive"}]
+    # Si está vacío, el navegador remoto queda deshabilitado.
+    fs_browse_roots: List[FsBrowseRoot] = []
+    fs_browse_allow_hidden: bool = False
+
+    @field_validator("fs_browse_roots", mode="before")
+    @classmethod
+    def _parse_fs_roots(cls, v):
+        # Acepta string JSON (caso .env) o lista ya parseada.
+        if v in (None, "", []):
+            return []
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except json.JSONDecodeError as exc:
+                _cfg_logger.warning("[config] FS_BROWSE_ROOTS no es JSON válido: %s", exc)
+                return []
+        return v
+
     # Email SMTP (vacío = notificaciones por email deshabilitadas)
     smtp_host: str = ""
     smtp_port: int = 587
@@ -70,6 +109,22 @@ class Settings(BaseSettings):
         p = Path(self.logs_dir)
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    @property
+    def fs_browse_resolved_roots(self) -> List[dict]:
+        """Devuelve las raíces válidas con su Path resuelto (en absoluto).
+        Las entradas con path inexistente se descartan con warning."""
+        out: List[dict] = []
+        for r in self.fs_browse_roots:
+            try:
+                p = Path(r.path).resolve(strict=False)
+                if not p.exists():
+                    _cfg_logger.warning("[config] FS_BROWSE_ROOTS: ruta inexistente '%s' (descartada)", r.path)
+                    continue
+                out.append({"label": r.label or str(p), "path": p, "raw": r.path})
+            except Exception as exc:
+                _cfg_logger.warning("[config] FS_BROWSE_ROOTS: ruta inválida '%s' (%s)", r.path, exc)
+        return out
 
 
 settings = Settings()

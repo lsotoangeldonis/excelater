@@ -381,6 +381,16 @@ textarea { resize: vertical; min-height: 70px; }
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(17px); }
 
+/* ── Remote file browser ── */
+.fsb-row { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); cursor:pointer; font-size:13px; }
+.fsb-row:last-child { border-bottom:none; }
+.fsb-row:hover { background: var(--bg2); }
+.fsb-row.selected { background: rgba(120,160,255,.10); color: var(--accent); }
+.fsb-row .fsb-icon { width:18px; color: var(--text3); flex-shrink:0; }
+.fsb-row.dir .fsb-icon { color: var(--accent); }
+.fsb-row .fsb-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fsb-row .fsb-meta { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
 /* ── Log panel ── */
 .log-modal { width: 780px; }
 .log-content {
@@ -1307,6 +1317,32 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
   </div>
 </div>
 
+<!-- MODAL: NAVEGADOR DE ARCHIVOS REMOTO -->
+<div class="modal-overlay" id="modal-fsbrowse">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-head">
+      <div class="modal-title" id="fsb-title"><i class="fa-solid fa-folder-tree"></i>&nbsp; Seleccionar archivo</div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('modal-fsbrowse')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">Raíz:</label>
+        <select id="fsb-root" class="filter-select" style="flex:1;min-width:220px" onchange="fsbGoRoot()"></select>
+        <button class="btn btn-ghost btn-sm" onclick="fsbUp()" title="Subir un nivel"><i class="fa-solid fa-arrow-up"></i></button>
+      </div>
+      <div id="fsb-breadcrumb" style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:8px;word-break:break-all"></div>
+      <div id="fsb-list" style="border:1px solid var(--border);border-radius:6px;max-height:380px;overflow:auto;background:var(--bg1)">
+        <div style="padding:24px;text-align:center;color:var(--text3)">Cargando…</div>
+      </div>
+      <div id="fsb-error" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--red);border-radius:6px;color:var(--red);font-size:12px"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('modal-fsbrowse')">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="fsb-confirm" onclick="fsbConfirm()" disabled><i class="fa-solid fa-check"></i> Seleccionar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: VER LOG -->
 <div class="modal-overlay" id="modal-log">
   <div class="modal log-modal">
@@ -2114,18 +2150,35 @@ function setTaskType(type) {
 }
 
 // ══════════════════════════════════════════════════════
-// BROWSE FILE (selector nativo de Windows)
+// BROWSE FILE / FOLDER
+// Local (mismo equipo) → diálogo nativo de Windows vía PowerShell.
+// Remoto → modal con navegador del filesystem del host (whitelist).
 // ══════════════════════════════════════════════════════
+let _serverInfo = null;   // { client_is_local, fs_browse_enabled, ... }
+
+async function loadServerInfo(force = false) {
+  if (_serverInfo && !force) return _serverInfo;
+  try { _serverInfo = await api('GET', '/server-info'); } catch (_) { _serverInfo = null; }
+  return _serverInfo;
+}
+
 async function browseFile(targetId, filterType = 'any') {
   const btn = document.querySelector(`button[onclick="browseFile('${targetId}','${filterType}')"]`);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
   try {
-    const data = await api('GET', `/browse-file?filter=${filterType}`);
-    if (data && data.path) {
-      document.getElementById(targetId).value = data.path;
+    const info = await loadServerInfo();
+    if (info && info.client_is_local) {
+      const data = await api('GET', `/browse-file?filter=${filterType}`);
+      if (data && data.path) document.getElementById(targetId).value = data.path;
+    } else {
+      if (!info || !info.fs_browse_enabled) {
+        toast('Acceso remoto sin navegador configurado. Pide al admin configurar FS_BROWSE_ROOTS.', 'error');
+        return;
+      }
+      openRemoteBrowse(targetId, filterType, 'file');
     }
   } catch (e) {
-    toast('No se pudo abrir el selector de archivos', 'error');
+    toast('No se pudo abrir el selector de archivos: ' + (e.message || ''), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
   }
@@ -2135,15 +2188,139 @@ async function browseFolder(targetId) {
   const btn = document.querySelector(`button[onclick="browseFolder('${targetId}')"]`);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
   try {
-    const data = await api('GET', '/browse-folder');
-    if (data && data.path) {
-      document.getElementById(targetId).value = data.path;
+    const info = await loadServerInfo();
+    if (info && info.client_is_local) {
+      const data = await api('GET', '/browse-folder');
+      if (data && data.path) document.getElementById(targetId).value = data.path;
+    } else {
+      if (!info || !info.fs_browse_enabled) {
+        toast('Acceso remoto sin navegador configurado. Pide al admin configurar FS_BROWSE_ROOTS.', 'error');
+        return;
+      }
+      openRemoteBrowse(targetId, 'any', 'folder');
     }
   } catch (e) {
-    toast('No se pudo abrir el selector de carpetas', 'error');
+    toast('No se pudo abrir el selector de carpetas: ' + (e.message || ''), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open"></i>'; }
   }
+}
+
+// ── Remote browser state & handlers ─────────────────────────────────────
+const _fsb = { targetId: null, filter: 'any', mode: 'file', roots: [], path: null, selected: null };
+
+async function openRemoteBrowse(targetId, filter, mode) {
+  _fsb.targetId = targetId;
+  _fsb.filter   = filter || 'any';
+  _fsb.mode     = mode;
+  _fsb.selected = null;
+  document.getElementById('fsb-title').innerHTML =
+    mode === 'folder'
+      ? '<i class="fa-solid fa-folder-tree"></i>&nbsp; Seleccionar carpeta'
+      : '<i class="fa-solid fa-folder-tree"></i>&nbsp; Seleccionar archivo';
+  document.getElementById('fsb-error').style.display = 'none';
+  document.getElementById('fsb-confirm').disabled = true;
+  try {
+    _fsb.roots = await api('GET', '/fs/roots');
+  } catch (e) {
+    toast('No se pudieron cargar las raíces: ' + (e.message || ''), 'error');
+    return;
+  }
+  const sel = document.getElementById('fsb-root');
+  sel.innerHTML = _fsb.roots.map((r, i) => `<option value="${i}">${esc(r.label)}</option>`).join('');
+  if (!_fsb.roots.length) {
+    document.getElementById('fsb-list').innerHTML =
+      '<div style="padding:24px;text-align:center;color:var(--text3)">No hay raíces configuradas</div>';
+    openModal('modal-fsbrowse');
+    return;
+  }
+  openModal('modal-fsbrowse');
+  await fsbGoRoot();
+}
+
+async function fsbGoRoot() {
+  const idx = +document.getElementById('fsb-root').value || 0;
+  const root = _fsb.roots[idx];
+  if (!root) return;
+  await fsbLoad(root.path);
+}
+
+async function fsbUp() {
+  const list = document.getElementById('fsb-list');
+  const parent = list.dataset.parent;
+  if (parent) await fsbLoad(parent);
+}
+
+async function fsbLoad(path) {
+  const list = document.getElementById('fsb-list');
+  const err  = document.getElementById('fsb-error');
+  err.style.display = 'none';
+  list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3)">Cargando…</div>';
+  _fsb.selected = null;
+  document.getElementById('fsb-confirm').disabled = (_fsb.mode === 'file');
+  try {
+    const q = encodeURIComponent(path);
+    const data = await api('GET', `/fs/list?path=${q}&filter=${_fsb.filter}`);
+    if (!data) return;
+    _fsb.path = data.path;
+    list.dataset.parent = data.parent || '';
+    document.getElementById('fsb-breadcrumb').textContent = data.path;
+    const rows = [];
+    for (const d of data.dirs) {
+      rows.push(`<div class="fsb-row dir" data-path="${esc(d.path)}" data-kind="dir" onclick="fsbPick(this)" ondblclick="fsbLoad('${escJs(d.path)}')">
+        <i class="fa-solid fa-folder fsb-icon"></i><span class="fsb-name">${esc(d.name)}</span>
+      </div>`);
+    }
+    if (_fsb.mode === 'file') {
+      for (const f of data.files) {
+        const sz = _fmtSize(f.size);
+        rows.push(`<div class="fsb-row" data-path="${esc(f.path)}" data-kind="file" onclick="fsbPick(this)" ondblclick="fsbConfirm()">
+          <i class="fa-solid fa-file fsb-icon"></i><span class="fsb-name">${esc(f.name)}</span><span class="fsb-meta">${sz}</span>
+        </div>`);
+      }
+    }
+    list.innerHTML = rows.length
+      ? rows.join('')
+      : '<div style="padding:24px;text-align:center;color:var(--text3)">Carpeta vacía</div>';
+    if (_fsb.mode === 'folder') {
+      // En modo carpeta, la propia ruta actual ya es válida como selección.
+      _fsb.selected = { path: data.path, kind: 'dir' };
+      document.getElementById('fsb-confirm').disabled = false;
+    }
+  } catch (e) {
+    err.textContent = e.message || 'Error al listar la carpeta';
+    err.style.display = '';
+    list.innerHTML = '';
+  }
+}
+
+function fsbPick(row) {
+  document.querySelectorAll('#fsb-list .fsb-row.selected').forEach(r => r.classList.remove('selected'));
+  row.classList.add('selected');
+  const kind = row.dataset.kind;
+  const path = row.dataset.path;
+  if (_fsb.mode === 'file' && kind === 'file') {
+    _fsb.selected = { path, kind };
+    document.getElementById('fsb-confirm').disabled = false;
+  } else if (_fsb.mode === 'folder') {
+    _fsb.selected = { path, kind };
+    document.getElementById('fsb-confirm').disabled = false;
+  }
+}
+
+function fsbConfirm() {
+  if (!_fsb.selected || !_fsb.targetId) return;
+  document.getElementById(_fsb.targetId).value = _fsb.selected.path;
+  closeModal('modal-fsbrowse');
+}
+
+function _fmtSize(b) {
+  if (b == null) return '';
+  const k = 1024;
+  if (b < k) return b + ' B';
+  if (b < k*k) return (b/k).toFixed(1) + ' KB';
+  if (b < k*k*k) return (b/(k*k)).toFixed(1) + ' MB';
+  return (b/(k*k*k)).toFixed(2) + ' GB';
 }
 
 async function openEditTask(id) {
@@ -2954,6 +3131,7 @@ async function confirmChangePassword() {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
+loadServerInfo();   // precarga client_is_local para el selector de archivos
 _doRefresh(true);
 </script>
 </body>
