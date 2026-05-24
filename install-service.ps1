@@ -199,13 +199,15 @@ if (-not (Test-Path $superadminScript)) {
             $tmpPy = [System.IO.Path]::GetTempFileName() + ".py"
             @'
 import sqlite3, sys
+found = False
 try:
-    import sys, os
     db = sys.argv[1]
     c = sqlite3.connect(db)
     r = c.execute("SELECT COUNT(*) FROM users WHERE role='superuser'").fetchone()
-    sys.exit(0 if r[0] > 0 else 1)
-except: sys.exit(1)
+    found = r is not None and r[0] > 0
+except Exception:
+    found = False
+sys.exit(0 if found else 1)
 '@ | Set-Content -Path $tmpPy -Encoding ASCII
             & $pythonExe $tmpPy $dbFile 2>$null
             $hasSuperuser = ($LASTEXITCODE -eq 0)
