@@ -316,7 +316,7 @@ if ($existingTask -and -not $needsRecreate) {
 # powershell.exe -WindowStyle Hidden: sin ventana visible, redirige todos los streams al log
 $pyExeQ  = $pythonExe -replace "'", "''"
 $logFileQ = $logFile   -replace "'", "''"
-$argument = "-NonInteractive -NoProfile -WindowStyle Hidden -Command `"& '$pyExeQ' -m uvicorn app.main:app --host 0.0.0.0 --port $Port *>> '$logFileQ'""
+$argument = "-NonInteractive -NoProfile -WindowStyle Hidden -Command `"& '$pyExeQ' -m uvicorn app.main:app --host 0.0.0.0 --port $Port *>> '$logFileQ'`""
 
 $action = New-ScheduledTaskAction `
     -Execute          "powershell.exe" `
