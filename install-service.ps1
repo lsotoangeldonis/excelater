@@ -295,19 +295,20 @@ if ($existingTask) {
 # ---------------------------------------------
 Write-Step "Registrando tarea programada '$ServiceName'..."
 
+$logsDir = Join-Path $ProjectDir "logs"
+$logFile = Join-Path $logsDir "excelater.log"
+
+# Crear directorio de logs si no existe
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    Write-Ok "Directorio de logs creado: $logsDir"
+}
+
 # Si ya existe y no necesita recrearse, saltamos el registro
 if ($existingTask -and -not $needsRecreate) {
     Write-Ok "Tarea ya registrada correctamente. Sin cambios."
 } else {
 
-$logsDir = Join-Path $ProjectDir "logs"
-$logFile = Join-Path $logsDir "excelater.log"
-
-# Crear directorio de logs antes de registrar la tarea
-if (-not (Test-Path $logsDir)) {
-    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
-    Write-Ok "Directorio de logs creado: $logsDir"
-}
 
 # cmd /c con comillas externas para que >> y 2>&1 sean operadores shell
 $argument = "/c `"`"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port $Port >> `"$logFile`" 2>&1`""
