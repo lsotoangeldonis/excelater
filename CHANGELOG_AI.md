@@ -24,6 +24,46 @@
 
 ---
 
+## 2026-05-25 — Feat: workflow `weekly_excel_copy` con selector `target_week` (actual vs pasada)
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** el flujo histórico siempre operaba sobre la semana actual (cada lunes copiaba Sem N-1 → Sem N). Hubo necesidad de un modo paralelo en el que el flujo trabaja con desfase de una semana: cada lunes copia la antepasada (Sem N-2) a la pasada (Sem N-1). Útil cuando el procesamiento del cierre semanal se hace al inicio de la siguiente semana sobre el archivo de la semana ya completada (en lugar de inicializar el de la semana en curso).
+
+**Qué cambió:**
+
+- **`app/workflows/weekly_excel_copy.py`**:
+  - Nuevo helper `_iso_week_n_back(today, n)` que devuelve `(year, week)` de hace `n` semanas. `_prev_iso_week` ahora delega en él (export preservado: los tests existentes lo importan).
+  - `run()` lee `config["target_week"]` (default `"current"`); valida contra `{"current", "previous"}` con fallback a `"current"` + warning. Calcula `(target_year, target_week_num)` con offset `0` o `1`, y `(source_year, source_week_num)` con offset `+1` más.
+  - Log explícito al iniciar con el modo, semana destino y semana fuente.
+  - `_process_pattern` y `_monday_copy_and_refresh` renombrados internamente: `cur_*` → `target_*`, y reciben explícitamente `source_week_num`. Ya no calculan la semana fuente con `_prev_iso_week()` adentro.
+- **`app/routes.py`**:
+  - `WeeklyExcelCopyTaskCreate` añade `target_week: str = "current"`.
+  - `create_weekly_excel_copy_task` valida `target_week in {"current", "previous"}` (HTTP 400 en caso contrario) y lo propaga a `workflow_cfg`.
+  - `PUT /tasks/{id}` ya acepta `pipeline_config` como dict opaco, así que la edición funciona sin cambios adicionales.
+- **`app/static/index.html`** (sección `#section-workflow`):
+  - Nuevo `<select id="f-wf-target-week">` arriba de CONFIGURACIÓN con dos opciones: "Semana actual" (Sem N-1 → Sem N) y "Semana pasada" (Sem N-2 → Sem N-1). Default visible = `current`.
+  - Texto descriptivo del workflow generalizado para mencionar que el destino es configurable.
+  - `openEditModal` carga `pc.target_week` (con fallback a `"current"` si viene `undefined`).
+  - `saveTask` incluye `target_week` en `workflowCfg` tanto para POST como para PUT.
+
+**Blast radius:**
+
+- **Backward compatible**: tareas existentes sin `target_week` en su `pipeline_config` se interpretan como `"current"` (default tanto en backend como en frontend). El comportamiento histórico no cambia.
+- Tests existentes en `tests/test_workflows.py` siguen pasando: importan `_format_week` y `_prev_iso_week`, ambos preservados.
+- API contract `POST /tasks/workflow/weekly-excel-copy` extendido con un campo opcional; clientes viejos no se rompen.
+- Frontend: el select aparece con default sano para tareas nuevas; tareas viejas al editarlas verán "Semana actual" seleccionada (que es la semántica equivalente a no tener el campo).
+
+**Documentación actualizada:** este `CHANGELOG_AI.md`. `CLAUDE_CONTEXT.md` y `AI_SUMMARY.md` describen el `pipeline_config` de `weekly_excel_copy` sin enumerar campos individuales del workflow — no requieren cambio. Si se quiere reflejar el nuevo campo en el shape oficial, añadir `target_week: "current" | "previous"` a la sección "API CONTRACT" de `AI_SUMMARY.md` (línea ~189).
+
+**Notas para futuro:**
+
+- Si se necesita un desfase de 2+ semanas (poco probable), el helper `_iso_week_n_back` ya lo soporta. Habría que migrar `target_week` a `target_week_offset: int` o aceptar más strings (`"two_weeks_ago"`, etc.).
+- El modal de simulación (`modal-wf-test`) sigue forzando solo `weekday`; el modo `target_week` se respeta desde el config persistido. Si se quiere simular ambos modos sin editar la tarea, habría que extender `WorkflowTestRunBody` con un override de `target_week`.
+- En modo `"previous"`, en el primer lunes de uso real probablemente el archivo destino (Sem N-1) ya exista y se omita la copia, refrescándolo solamente — comportamiento idéntico al caso "destino ya existe" del modo current. Documentar este efecto en el ONBOARDING si genera confusión.
+
+---
+
 ## 2026-05-24 — Feat: trigger `on_final_failure` para alertas tras agotar reintentos
 
 **Commits relacionados:** sin commitear aún (working tree).

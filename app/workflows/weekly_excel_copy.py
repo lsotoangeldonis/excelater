@@ -1,9 +1,12 @@
 """app/workflows/weekly_excel_copy.py — Flujo semanal de copia y refresco de Excel
 
-Lógica:
-  - Lunes: copia el archivo de la semana anterior (Sem N-1) al nombre de la
-    semana actual (Sem N) y lo refresca con Excel COM.
-  - Otros días + daily_refresh=True: refresca el archivo de la semana actual.
+Lógica (parametrizable por `target_week`):
+  - `target_week = "current"` (default, comportamiento histórico):
+      * Lunes: copia Sem N-1 → Sem N y refresca Sem N.
+      * Otros días + daily_refresh=True: refresca Sem N.
+  - `target_week = "previous"`:
+      * Lunes: copia Sem N-2 (antepasada) → Sem N-1 (pasada) y refresca Sem N-1.
+      * Otros días + daily_refresh=True: refresca Sem N-1.
   - Otros días + daily_refresh=False: no-op (retorna success sin hacer nada).
 
 Configuración (pipeline_config JSON):
@@ -12,6 +15,7 @@ Configuración (pipeline_config JSON):
     "folder": "C:\\...\\2. Análisis de Ventas",
     "file_patterns": ["Analisis Ventas The Box Sem {week}.xlsx"],
     "week_padding": 2,
+    "target_week": "current",    # "current" | "previous"
     "daily_refresh": false,
     "fail_if_source_missing": true,
     "excel_visible": false,
@@ -33,11 +37,16 @@ from app.workflows.base import BaseWorkflow
 import logging
 
 
+def _iso_week_n_back(today: datetime, n: int) -> tuple[int, int]:
+    """Devuelve (year, week) ISO de hace `n` semanas (n=0 → semana actual)."""
+    base = today - timedelta(weeks=n)
+    cal = base.isocalendar()
+    return cal.year, cal.week
+
+
 def _prev_iso_week(today: datetime) -> tuple[int, int]:
     """Devuelve (year, week) ISO de la semana anterior a today."""
-    prev = today - timedelta(weeks=1)
-    cal = prev.isocalendar()
-    return cal.year, cal.week
+    return _iso_week_n_back(today, 1)
 
 
 def _format_week(pattern: str, week: int, padding: int) -> str:
@@ -70,13 +79,31 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         }
 
         today    = datetime.now()
-        cal      = today.isocalendar()
-        cur_year, cur_week = cal.year, cal.week
+
+        # target_week define qué semana es el "destino" del flujo.
+        #   "current"  → destino = semana actual; fuente = semana pasada (comportamiento histórico).
+        #   "previous" → destino = semana pasada; fuente = semana antepasada.
+        target_mode = str(config.get("target_week", "current")).lower().strip()
+        if target_mode not in ("current", "previous"):
+            logger.warning(
+                f"[WeeklyExcelCopy] target_week='{target_mode}' inválido — usando 'current'."
+            )
+            target_mode = "current"
+        target_offset = 0 if target_mode == "current" else 1
+
+        target_year, target_week_num = _iso_week_n_back(today, target_offset)
+        source_year, source_week_num = _iso_week_n_back(today, target_offset + 1)
 
         # force_weekday permite simular un día concreto sin esperar al lunes real
         force_weekday = config.get("force_weekday")
         effective_weekday = int(force_weekday) if force_weekday is not None else today.isoweekday()
         is_monday = effective_weekday == 1
+
+        logger.info(
+            f"[WeeklyExcelCopy] Modo target_week='{target_mode}' "
+            f"→ destino={target_year}-W{target_week_num:02d}, "
+            f"fuente={source_year}-W{source_week_num:02d}."
+        )
 
         if force_weekday is not None:
             logger.info(
@@ -99,8 +126,10 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
                 pattern=pattern,
                 folder=folder,
                 week_padding=week_padding,
-                cur_week=cur_week,
-                cur_year=cur_year,
+                target_week_num=target_week_num,
+                target_year=target_year,
+                source_week_num=source_week_num,
+                source_year=source_year,
                 is_monday=is_monday,
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
@@ -132,8 +161,10 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         pattern: str,
         folder: str,
         week_padding: int,
-        cur_week: int,
-        cur_year: int,
+        target_week_num: int,
+        target_year: int,
+        source_week_num: int,
+        source_year: int,
         is_monday: bool,
         fail_missing: bool,
         excel_visible: bool,
@@ -145,17 +176,18 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         logger: logging.Logger,
     ) -> EngineResult:
         """Procesa un patrón de archivo. Retorna EngineResult."""
-        cur_name = _format_week(pattern, cur_week, week_padding)
-        cur_path = Path(folder) / cur_name
+        target_name = _format_week(pattern, target_week_num, week_padding)
+        target_path = Path(folder) / target_name
 
         if is_monday:
             return self._monday_copy_and_refresh(
                 pattern=pattern,
                 folder=folder,
                 week_padding=week_padding,
-                cur_week=cur_week,
-                cur_name=cur_name,
-                cur_path=cur_path,
+                target_week_num=target_week_num,
+                source_week_num=source_week_num,
+                target_name=target_name,
+                target_path=target_path,
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
@@ -167,11 +199,11 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
             )
         else:
             # daily_refresh=True (ya validado antes de llegar aquí)
-            if pivot_guards and cur_path.exists():
-                self._expand_pivot_space(str(cur_path), pivot_guards, logger)
+            if pivot_guards and target_path.exists():
+                self._expand_pivot_space(str(target_path), pivot_guards, logger)
             return self._refresh_file(
-                file_path=str(cur_path),
-                label=cur_name,
+                file_path=str(target_path),
+                label=target_name,
                 fail_missing=fail_missing,
                 excel_visible=excel_visible,
                 refresh_timeout=refresh_timeout,
@@ -186,9 +218,10 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         pattern: str,
         folder: str,
         week_padding: int,
-        cur_week: int,
-        cur_name: str,
-        cur_path: Path,
+        target_week_num: int,
+        source_week_num: int,
+        target_name: str,
+        target_path: Path,
         fail_missing: bool,
         excel_visible: bool,
         refresh_timeout: int,
@@ -198,31 +231,30 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
         skip_pivots: set,
         logger: logging.Logger,
     ) -> EngineResult:
-        """Lunes: copia Sem N-1 → Sem N (si no existe) y refresca."""
-        # Calcular semana anterior
-        today = datetime.now()
-        prev_year, prev_week = _prev_iso_week(today)
-        prev_name = _format_week(pattern, prev_week, week_padding)
-        prev_path = Path(folder) / prev_name
+        """Lunes: copia archivo de `source_week_num` → `target_week_num` (si no existe) y refresca."""
+        source_name = _format_week(pattern, source_week_num, week_padding)
+        source_path = Path(folder) / source_name
 
+        today = datetime.now()
         logger.info(
-            f"[WeeklyExcelCopy] Inicio de semana ISO {cur_week} ({today.strftime('%d/%m/%Y')})."
+            f"[WeeklyExcelCopy] Lunes {today.strftime('%d/%m/%Y')} — "
+            f"copia Sem {source_week_num:02d} → Sem {target_week_num:02d}."
         )
-        logger.info(f"  Origen : {prev_path}")
-        logger.info(f"  Destino: {cur_path}")
+        logger.info(f"  Origen : {source_path}")
+        logger.info(f"  Destino: {target_path}")
 
         # Verificar si el archivo destino ya existe
-        if cur_path.exists():
+        if target_path.exists():
             logger.warning(
-                f"[WeeklyExcelCopy] '{cur_name}' ya existe — se omite la copia, "
+                f"[WeeklyExcelCopy] '{target_name}' ya existe — se omite la copia, "
                 "solo se refresca."
             )
         else:
             # Verificar fuente
-            if not prev_path.exists():
+            if not source_path.exists():
                 msg = (
-                    f"[WeeklyExcelCopy] Archivo fuente no encontrado: '{prev_name}'. "
-                    f"Se buscó en: {prev_path}"
+                    f"[WeeklyExcelCopy] Archivo fuente no encontrado: '{source_name}'. "
+                    f"Se buscó en: {source_path}"
                 )
                 if fail_missing:
                     logger.error(msg)
@@ -233,19 +265,19 @@ class WeeklyExcelCopyWorkflow(BaseWorkflow):
 
             # Copiar
             try:
-                shutil.copy2(str(prev_path), str(cur_path))
-                logger.info(f"[WeeklyExcelCopy] Copia completada: '{prev_name}' → '{cur_name}'.")
+                shutil.copy2(str(source_path), str(target_path))
+                logger.info(f"[WeeklyExcelCopy] Copia completada: '{source_name}' → '{target_name}'.")
             except Exception:
                 err = traceback.format_exc()
-                logger.error(f"[WeeklyExcelCopy] Error al copiar '{prev_name}':\n{err}")
+                logger.error(f"[WeeklyExcelCopy] Error al copiar '{source_name}':\n{err}")
                 return EngineResult(success=False, error_msg=err)
 
-        # Refrescar el archivo de la semana actual
+        # Refrescar el archivo destino
         if pivot_guards:
-            self._expand_pivot_space(str(cur_path), pivot_guards, logger)
+            self._expand_pivot_space(str(target_path), pivot_guards, logger)
         return self._refresh_file(
-            file_path=str(cur_path),
-            label=cur_name,
+            file_path=str(target_path),
+            label=target_name,
             fail_missing=fail_missing,
             excel_visible=excel_visible,
             refresh_timeout=refresh_timeout,

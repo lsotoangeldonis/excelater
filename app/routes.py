@@ -407,6 +407,9 @@ class WeeklyExcelCopyTaskCreate(BaseModel):
     file_patterns: list[str]
     # Número de dígitos del número de semana (2 → "05", 1 → "5")
     week_padding: int = 2
+    # Semana destino del flujo: "current" (cada lunes copia Sem N-1 → Sem N) o
+    # "previous" (cada lunes copia Sem N-2 → Sem N-1). Default = "current".
+    target_week: str = "current"
     # Si True, refresca el archivo de la semana actual también en días no-lunes
     daily_refresh: bool = False
     # Si True, la tarea falla cuando el archivo fuente no existe; False → warning y continúa
@@ -443,11 +446,18 @@ async def create_weekly_excel_copy_task(
                 detail=f"El patrón '{pattern}' no contiene el placeholder {{week}}.",
             )
 
+    if body.target_week not in ("current", "previous"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"target_week debe ser 'current' o 'previous' (recibido: '{body.target_week}').",
+        )
+
     workflow_cfg = {
         "workflow_type": "weekly_excel_copy",
         "folder": body.folder,
         "file_patterns": body.file_patterns,
         "week_padding": body.week_padding,
+        "target_week": body.target_week,
         "daily_refresh": body.daily_refresh,
         "fail_if_source_missing": body.fail_if_source_missing,
         "excel_visible": body.excel_visible,
