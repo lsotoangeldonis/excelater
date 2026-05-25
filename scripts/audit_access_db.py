@@ -143,7 +143,7 @@ def dump_named_objects(acc, out_dir: Path, obj_type: int, subdir: str, ext: str)
             continue
         # Sanitizar para FS
         safe_name = "".join(c if c.isalnum() or c in " -_.()" else "_" for c in name)
-        out = target / f"{safe_name}.{ext}"
+        out = (target / f"{safe_name}.{ext}").resolve()
         try:
             acc.SaveAsText(obj_type, name, str(out))
             count += 1
