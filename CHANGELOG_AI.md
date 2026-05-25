@@ -24,6 +24,49 @@
 
 ---
 
+## 2026-05-25 — Feat: modal de actividad en vivo (ejecuciones activas + reintentos pendientes cancelables)
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** la única forma de ver "qué está corriendo ahora" era ir a la página de Logs y filtrar por estado=running. Y los reintentos pendientes (jobs con id `<task_id>_retry_<n>` en APScheduler) no eran visibles ni cancelables desde la UI — sólo podían cancelarse reiniciando el servicio o esperando a que se agotaran. El operador pidió un acceso directo desde el dashboard con dos pestañas en un mismo modal y posibilidad de cancelar reintentos pendientes antes de que se disparen.
+
+**Qué cambió:**
+
+- **`app/routes.py`** — dos endpoints nuevos en sección "ACTIVIDAD EN VIVO":
+  - `GET /api/activity?task_id=<opt>` → `{running: [...], pending_retries: [...]}`. Ejecuciones activas vienen de `RunLog.status == RUNNING`. Reintentos pendientes se descubren iterando `scheduler.get_jobs()` y filtrando por id que matchee `<uuid>_retry_<n>` (uses `rpartition("_retry_")` para extraer ambos componentes). Filtra jobs cuya tarea esté soft-deleted. Ordena pendientes por `next_run_at` ascendente.
+  - `POST /api/activity/cancel-retry/{task_id}` → remueve TODOS los jobs `<task_id>_retry_*` de APScheduler (en la práctica hay como máximo uno, pero la implementación es defensiva). Resetea `task.retry_count = 0` y restaura `task.next_run_at` al próximo disparo del schedule regular vía `scheduler.get_job(task_id).next_run_time`. Devuelve 404 si no había reintentos pendientes.
+  - Ambos protegidos por `verify_api_key` (consistente con el resto de los endpoints de tareas).
+
+- **`app/static/index.html`** — nuevo modal `#modal-activity` y UI asociada:
+  - **Botón en cabecera del dashboard** (`<i class="fa-bolt">`) junto a Exportar/Importar/+Nueva. Muestra un chip con el conteo total `running + pending` que se refresca desde `loadDashboard()`.
+  - **Botón por fila** (icono bolt) en la columna de Acciones, junto a Editar/Copiar/Ejecutar. Llama a `openActivityModal(task.id, task.name)` para abrir el modal filtrado.
+  - **Modal con dos tabs** usando las clases existentes `.sch-tabs` / `.sch-tab.active`:
+    - Tab 1 "Ejecuciones activas": tabla con Tarea / Inicio / Intento (badge "Reintento N" si `retry_attempt > 0`) / acciones [Ver log, Detener]. "Ver log" usa la función `viewLog()` existente que ya hace polling de `/logs/{id}/tail`.
+    - Tab 2 "Reintentos pendientes": tabla con Tarea / Intento (badge `N/max_retries`) / Programado para / acciones [Cancelar reintento]. Confirmación + toast.
+  - **Auto-refresh cada 5s** (`ACTIVITY_POLL_MS`) mientras el modal está abierto. `setInterval` se limpia en `closeActivityModal()`.
+  - **Filtrado por tarea**: el título cambia a "Actividad: \<nombre tarea\>" cuando se abre desde el botón por fila. El filtro se pasa al endpoint vía query param.
+  - El modal se añadió al set `_modalsKeepOpenOnOutside` para evitar que clicks accidentales lo cierren mientras el polling actualiza la tabla.
+
+**Blast radius:**
+
+- Nuevos endpoints: ambos opt-in (sólo se usan desde el modal). No tocan el flujo de ejecución/reintento existente, sólo lo observan y proveen cancelación.
+- El cancel-retry asume que el job `<task_id>_retry_<n>` aún no ha empezado a ejecutarse. Si el job ya disparó y `execute_task` está corriendo, el botón "Detener" del tab 1 (vía `cancel_run()` → stop_event + task.cancel()) es el camino correcto. Los dos casos se ven en pestañas separadas; la UI no permite confundirlos.
+- `task.retry_count = 0` después de cancelar es consistente con el comportamiento al agotar reintentos en [scheduler.py:297](app/scheduler.py#L297).
+- `task.next_run_at = None` si no hay schedule regular vivo (caso raro: tarea PAUSED o sin job — entonces no hay nada que mostrar como "próxima ejecución").
+- Frontend: tareas existentes no se ven afectadas; el modal sólo aparece al hacer click.
+
+**Documentación actualizada:** este `CHANGELOG_AI.md`. `AI_SUMMARY.md` sección ENDPOINTS / Logs podría enriquecerse con la subsección "Activity" — opcional, no bloqueante.
+
+**Notas para futuro:**
+
+- El descubrimiento de retries pendientes está acoplado al naming convention `<task_id>_retry_<n>` de [scheduler.py:285](app/scheduler.py#L285). Si en el futuro se cambia el formato del job id, hay que actualizar también el parsing en `get_activity` y el prefix en `cancel_pending_retry`. Considerar exponer un helper `is_retry_job_id(s) -> tuple[task_id, n] | None` en `app/scheduler.py` y reutilizarlo en ambos lados.
+- Auto-refresh corre incluso si la pestaña del navegador está en background; en futuro se puede usar `document.visibilityState` para pausarlo y ahorrar requests.
+- La acción "Detener" usa el endpoint pre-existente `POST /logs/{run_id}/stop`. Para pipelines/workflows largos la detención puede tardar (espera al próximo punto chequeable del `stop_event` en `excel_engine`); el toast dice "Detención solicitada" para reflejar eso.
+- No hay paginación: si en algún momento hay 50+ ejecuciones activas, la tabla crece sin scroll dedicado. Improbable en este servicio (typical N < 5).
+- Los reintentos pendientes NO se persisten en DB — viven sólo en la memoria del scheduler. Si el servicio reinicia, se pierden (la próxima ejecución será la del schedule regular, no el reintento). Es comportamiento histórico, no introducido por este cambio.
+
+---
+
 ## 2026-05-25 — Feat: workflow `weekly_excel_copy` con selector `target_week` (actual vs pasada)
 
 **Commits relacionados:** sin commitear aún (working tree).

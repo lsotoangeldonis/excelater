@@ -793,6 +793,97 @@ async def stop_run(run_id: int, db: AsyncSession = Depends(get_db)):
     return {"message": "Ejecucion regularizada"}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ACTIVIDAD EN VIVO (ejecuciones activas + reintentos pendientes)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/activity", dependencies=[Depends(verify_api_key)])
+async def get_activity(
+    task_id: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Devuelve ejecuciones en curso (RunLog.status=running) y reintentos
+    pendientes (jobs de APScheduler con id `<task_id>_retry_<n>`).
+    Opcionalmente filtra por `task_id`."""
+    q = select(RunLog).where(RunLog.status == RunStatus.RUNNING)
+    if task_id:
+        q = q.where(RunLog.task_id == task_id)
+    q = q.order_by(RunLog.started_at)
+    running_runs = (await db.execute(q)).scalars().all()
+    running = [
+        {
+            "id": r.id,
+            "task_id": r.task_id,
+            "task_name": r.task_name,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "retry_attempt": r.retry_attempt or 0,
+            "log_file": r.log_file,
+        }
+        for r in running_runs
+    ]
+
+    pending: list[dict] = []
+    for job in scheduler.get_jobs():
+        if "_retry_" not in job.id:
+            continue
+        jt_id, _, attempt_str = job.id.rpartition("_retry_")
+        if not jt_id or not attempt_str:
+            continue
+        if task_id and jt_id != task_id:
+            continue
+        try:
+            attempt_n = int(attempt_str)
+        except ValueError:
+            continue
+        task_row = await db.get(Task, jt_id)
+        if not task_row or task_row.deleted_at is not None:
+            continue
+        nxt = job.next_run_time
+        pending.append({
+            "job_id": job.id,
+            "task_id": jt_id,
+            "task_name": task_row.name,
+            "retry_attempt": attempt_n,
+            "max_retries": task_row.max_retries,
+            "next_run_at": nxt.replace(tzinfo=None).isoformat() if nxt else None,
+        })
+
+    pending.sort(key=lambda p: p["next_run_at"] or "")
+
+    return {"running": running, "pending_retries": pending}
+
+
+@router.post("/activity/cancel-retry/{task_id}", dependencies=[Depends(verify_api_key)])
+async def cancel_pending_retry(task_id: str, db: AsyncSession = Depends(get_db)):
+    """Cancela todos los reintentos pendientes de una tarea (remueve los jobs
+    `<task_id>_retry_<n>` de APScheduler). Resetea `task.retry_count` y restaura
+    `task.next_run_at` al próximo disparo del schedule regular."""
+    task = await db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "Tarea no encontrada")
+
+    removed: list[str] = []
+    for job in list(scheduler.get_jobs()):
+        if job.id.startswith(f"{task_id}_retry_"):
+            scheduler.remove_job(job.id)
+            removed.append(job.id)
+
+    if not removed:
+        raise HTTPException(404, "No hay reintentos pendientes para esta tarea")
+
+    task.retry_count = 0
+    regular_job = scheduler.get_job(task_id)
+    task.next_run_at = (
+        regular_job.next_run_time.replace(tzinfo=None)
+        if regular_job and regular_job.next_run_time
+        else None
+    )
+    task.updated_at = datetime.now()
+    await db.commit()
+
+    return {"message": "Reintento(s) cancelado(s)", "cancelled": removed, "task_id": task_id}
+
+
 @router.post("/tasks/{task_id}/dry-run", dependencies=[Depends(verify_api_key)])
 async def dry_run(task_id: str, db: AsyncSession = Depends(get_db)):
     """Ejecuta la tarea sin guardar ni registrar en RunLog. Útil para probar configuración."""

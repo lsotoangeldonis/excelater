@@ -678,6 +678,10 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="table-header">
           <div class="table-title">Tareas configuradas<span class="count-chip" id="tasks-count"></span></div>
           <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="openActivityModal()" title="Ver ejecuciones en curso y reintentos pendientes">
+              <i class="fa-solid fa-bolt" style="color:var(--cyan)"></i> Actividad
+              <span class="count-chip" id="activity-count" style="display:none">0</span>
+            </button>
             <button class="btn btn-ghost btn-sm" onclick="exportTasks()" title="Exportar todas las tareas a JSON"><i class="fa-solid fa-file-export"></i> Exportar</button>
             <label class="btn btn-ghost btn-sm" style="cursor:pointer" title="Importar tareas desde JSON"><i class="fa-solid fa-file-import"></i> Importar<input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importTasks(this)"></label>
             <button class="btn btn-primary btn-sm" onclick="openNewTask()">+ Nueva</button>
@@ -1361,6 +1365,72 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
   </div>
 </div>
 
+<!-- MODAL: ACTIVIDAD EN VIVO -->
+<div class="modal-overlay" id="modal-activity">
+  <div class="modal" style="max-width:880px">
+    <div class="modal-head">
+      <div class="modal-title" id="act-title"><i class="fa-solid fa-bolt" style="color:var(--cyan)"></i>&nbsp; Actividad en vivo</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="loadActivity()" title="Refrescar"><i class="fa-solid fa-arrows-rotate"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="closeActivityModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="sch-tabs" style="margin-bottom:12px">
+        <button type="button" class="sch-tab active" id="act-tab-running" onclick="setActivityTab('running')">
+          <i class="fa-solid fa-spinner"></i>&nbsp; Ejecuciones activas
+          <span class="count-chip" id="act-count-running">0</span>
+        </button>
+        <button type="button" class="sch-tab" id="act-tab-pending" onclick="setActivityTab('pending')">
+          <i class="fa-solid fa-hourglass-half"></i>&nbsp; Reintentos pendientes
+          <span class="count-chip" id="act-count-pending">0</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Ejecuciones activas -->
+      <div id="act-panel-running">
+        <table style="width:100%;font-size:12px">
+          <thead>
+            <tr>
+              <th style="text-align:left">Tarea</th>
+              <th style="text-align:left">Inicio</th>
+              <th style="text-align:left">Intento</th>
+              <th style="text-align:right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="act-body-running">
+            <tr><td colspan="4"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tab 2: Reintentos pendientes -->
+      <div id="act-panel-pending" style="display:none">
+        <table style="width:100%;font-size:12px">
+          <thead>
+            <tr>
+              <th style="text-align:left">Tarea</th>
+              <th style="text-align:left">Intento</th>
+              <th style="text-align:left">Programado para</th>
+              <th style="text-align:right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="act-body-pending">
+            <tr><td colspan="4"><div class="empty"><div class="empty-sub">Cargando…</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="font-size:11px;color:var(--text2);margin-top:10px;font-family:var(--mono)">
+        <i class="fa-solid fa-rotate"></i>&nbsp; Auto-actualización cada 5s mientras este modal esté abierto.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" onclick="closeActivityModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: SIMULAR WORKFLOW -->
 <div class="modal-overlay" id="modal-wf-test">
   <div class="modal modal-sm">
@@ -1778,6 +1848,7 @@ async function loadDashboard() {
       _updateTableSortHeaders('upcoming-table');
     }
     renderUpcomingSorted();
+    _refreshActivityBadge();
   } catch(e) {
     document.getElementById('srv-dot').style.background = 'var(--red)';
     document.getElementById('srv-label').textContent = 'Sin conexión';
@@ -1869,6 +1940,7 @@ function renderTasks(tasks) {
           <button class="btn btn-ghost btn-sm" onclick="openEditTask('${t.id}')" title="Editar"><i class="fa-solid fa-pen"></i> Editar</button>
           <button class="btn btn-ghost btn-sm" onclick="copyTask('${t.id}')" title="Copiar tarea"><i class="fa-solid fa-copy"></i> Copiar</button>
           <button class="btn btn-ghost btn-sm" onclick="runNow('${t.id}','${escJs(t.name)}')" title="Ejecutar ahora"><i class="fa-solid fa-play"></i> Ejecutar</button>
+          <button class="btn btn-ghost btn-sm" onclick="openActivityModal('${t.id}','${escJs(t.name)}')" title="Ver actividad de esta tarea (ejecuciones en curso y reintentos pendientes)" style="color:var(--cyan)"><i class="fa-solid fa-bolt"></i> Actividad</button>
           ${(t.task_type || 'excel') === 'workflow'
             ? `<button class="btn btn-ghost btn-sm" onclick="openWfTest('${t.id}','${escJs(t.name)}')" title="Simular ejecución con día personalizado" style="color:#e67e22"><i class="fa-solid fa-flask"></i> Simular</button>`
             : ''}
@@ -2772,7 +2844,7 @@ function closeModal(id) {
   if (id === 'modal-log') _stopLogPoll();
 }
 const _modalsKeepOpenOnOutside = new Set([
-  'modal-task', 'modal-notif-rule', 'modal-wf-test',
+  'modal-task', 'modal-notif-rule', 'modal-wf-test', 'modal-activity',
   'modal-run-now', 'modal-user', 'modal-reset-pw', 'modal-change-pw',
 ]);
 document.querySelectorAll('.modal-overlay').forEach(o => {
@@ -2837,6 +2909,150 @@ async function stopRun(runId) {
     toast('Detención solicitada', 'info');
     loadLogs(logsPage);
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// ACTIVIDAD EN VIVO (modal con tabs: running + pending retries)
+// ══════════════════════════════════════════════════════
+let _activityFilterTaskId = null;
+let _activityFilterTaskName = null;
+let _activityPollTimer = null;
+const ACTIVITY_POLL_MS = 5000;
+
+function openActivityModal(taskId = null, taskName = null) {
+  _activityFilterTaskId = taskId || null;
+  _activityFilterTaskName = taskName || null;
+  const titleEl = document.getElementById('act-title');
+  if (taskId) {
+    titleEl.innerHTML = `<i class="fa-solid fa-bolt" style="color:var(--cyan)"></i>&nbsp; Actividad: <span style="color:var(--text2);font-weight:500">${esc(taskName || taskId)}</span>`;
+  } else {
+    titleEl.innerHTML = `<i class="fa-solid fa-bolt" style="color:var(--cyan)"></i>&nbsp; Actividad en vivo`;
+  }
+  setActivityTab('running');
+  document.getElementById('modal-activity').classList.add('open');
+  loadActivity();
+  if (_activityPollTimer) clearInterval(_activityPollTimer);
+  _activityPollTimer = setInterval(loadActivity, ACTIVITY_POLL_MS);
+}
+
+function closeActivityModal() {
+  document.getElementById('modal-activity').classList.remove('open');
+  if (_activityPollTimer) { clearInterval(_activityPollTimer); _activityPollTimer = null; }
+  _activityFilterTaskId = null;
+  _activityFilterTaskName = null;
+  _refreshActivityBadge();
+}
+
+function setActivityTab(name) {
+  const running = name === 'running';
+  document.getElementById('act-tab-running').classList.toggle('active', running);
+  document.getElementById('act-tab-pending').classList.toggle('active', !running);
+  document.getElementById('act-panel-running').style.display = running ? '' : 'none';
+  document.getElementById('act-panel-pending').style.display = running ? 'none' : '';
+}
+
+async function loadActivity() {
+  const qs = _activityFilterTaskId ? `?task_id=${encodeURIComponent(_activityFilterTaskId)}` : '';
+  let data;
+  try {
+    data = await api('GET', `/activity${qs}`);
+  } catch (e) {
+    toast('Error cargando actividad: ' + e.message, 'error');
+    return;
+  }
+  _renderActivityRunning(data.running || []);
+  _renderActivityPending(data.pending_retries || []);
+  document.getElementById('act-count-running').textContent = (data.running || []).length;
+  document.getElementById('act-count-pending').textContent = (data.pending_retries || []).length;
+  // Si no es filtrado, también actualizar el chip del header
+  if (!_activityFilterTaskId) {
+    _setActivityBadge((data.running || []).length + (data.pending_retries || []).length);
+  }
+}
+
+function _renderActivityRunning(rows) {
+  const tbody = document.getElementById('act-body-running');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty"><div class="empty-sub">Sin ejecuciones activas en este momento.</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${esc(r.task_name)}</strong></td>
+      <td style="font-family:var(--mono);color:var(--text2)">${fmtDate(r.started_at)}</td>
+      <td>${r.retry_attempt > 0 ? `<span class="badge" style="background:#f6c14380;color:#7a5200">Reintento ${r.retry_attempt}</span>` : '<span style="color:var(--text2)">Original</span>'}</td>
+      <td style="text-align:right">
+        <button class="btn btn-ghost btn-sm" onclick="_actViewLog(${r.id},'${escJs(r.task_name)}')" title="Ver log en vivo"><i class="fa-solid fa-file-lines"></i> Ver log</button>
+        <button class="btn btn-danger btn-sm" onclick="_actStopRun(${r.id})" title="Detener ejecución"><i class="fa-solid fa-stop"></i> Detener</button>
+      </td>
+    </tr>`).join('');
+}
+
+function _renderActivityPending(rows) {
+  const tbody = document.getElementById('act-body-pending');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty"><div class="empty-sub">No hay reintentos pendientes.</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${esc(r.task_name)}</strong></td>
+      <td><span class="badge" style="background:#f6c14380;color:#7a5200">Intento ${r.retry_attempt}/${r.max_retries}</span></td>
+      <td style="font-family:var(--mono);color:var(--text2)">${fmtDate(r.next_run_at)}</td>
+      <td style="text-align:right">
+        <button class="btn btn-danger btn-sm" onclick="cancelPendingRetry('${r.task_id}','${escJs(r.task_name)}')" title="Cancelar reintento antes de que se ejecute"><i class="fa-solid fa-ban"></i> Cancelar reintento</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function _actStopRun(runId) {
+  if (!confirm('¿Detener esta ejecución en curso?')) return;
+  try {
+    await api('POST', `/logs/${runId}/stop`);
+    toast('Detención solicitada', 'info');
+    loadActivity();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function _actViewLog(runId, taskName) {
+  closeActivityModal();
+  if (typeof viewLog === 'function') {
+    viewLog(runId, taskName || '');
+  } else {
+    logStatusFilter = 'running';
+    goPage('logs');
+  }
+}
+
+async function cancelPendingRetry(taskId, taskName) {
+  if (!confirm(`¿Cancelar el reintento pendiente de "${taskName}"? La tarea volverá a su programación regular.`)) return;
+  try {
+    await api('POST', `/activity/cancel-retry/${taskId}`);
+    toast('Reintento cancelado', 'success');
+    loadActivity();
+    if (currentPage === 'dashboard') loadDashboard();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// Badge en el botón de cabecera del dashboard
+function _setActivityBadge(n) {
+  const chip = document.getElementById('activity-count');
+  if (!chip) return;
+  if (n > 0) {
+    chip.style.display = '';
+    chip.textContent = n;
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
+async function _refreshActivityBadge() {
+  try {
+    const data = await api('GET', '/activity');
+    _setActivityBadge((data.running || []).length + (data.pending_retries || []).length);
+  } catch (e) {
+    // silencioso — no spamear toasts si el endpoint falla
+  }
 }
 
 function goToRunningLog(taskId) {
