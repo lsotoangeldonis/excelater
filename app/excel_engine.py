@@ -130,18 +130,285 @@ def _trigger_onedrive_download(path: str, log: logging.Logger, timeout: int = 12
     log.warning(f"Timeout ({timeout}s) esperando descarga de OneDrive. Se intentará continuar.")
 
 
+def _read_laccdb_users(accdb_path: str) -> list[tuple[str, str]]:
+    """Lee el .laccdb hermano de un .accdb y devuelve [(computer, user), ...].
+
+    El formato es binario pero estable: bloques de 64 bytes con 32 bytes para
+    computer name y 32 bytes para username, rellenados con NUL. El archivo es
+    legible aún cuando Access lo tiene abierto.
+    """
+    p = Path(accdb_path)
+    if p.suffix.lower() not in (".accdb", ".mdb"):
+        return []
+    lock = p.with_suffix(".laccdb" if p.suffix.lower() == ".accdb" else ".ldb")
+    if not lock.exists():
+        return []
+    try:
+        data = lock.read_bytes()
+    except OSError:
+        return []
+    entries: list[tuple[str, str]] = []
+    for i in range(0, len(data), 64):
+        block = data[i:i + 64]
+        if len(block) < 64:
+            break
+        computer = block[0:32].split(b"\x00", 1)[0].decode("latin-1", "ignore").strip()
+        user = block[32:64].split(b"\x00", 1)[0].decode("latin-1", "ignore").strip()
+        if computer or user:
+            entries.append((computer, user))
+    # Deduplicar manteniendo orden
+    seen: set[tuple[str, str]] = set()
+    unique: list[tuple[str, str]] = []
+    for e in entries:
+        if e not in seen:
+            seen.add(e)
+            unique.append(e)
+    return unique
+
+
+def _read_xlsx_lock_owner(xlsx_path: str) -> str | None:
+    """Lee el ~$archivo.xlsx y devuelve el usuario que tiene el libro abierto.
+
+    Formato: byte 0 = longitud del nombre (en chars), bytes 1.. = nombre en
+    UTF-16-LE (Excel trunca a 15 chars). Devuelve None si no se puede leer.
+    """
+    p = Path(xlsx_path)
+    lock = p.parent / f"~${p.name}"
+    if not lock.exists():
+        return None
+    try:
+        data = lock.read_bytes()
+    except OSError:
+        return None
+    if len(data) < 3:
+        return None
+    try:
+        length = data[0]
+        raw = data[1:1 + length * 2]
+        name = raw.decode("utf-16-le", "ignore").rstrip("\x00").strip()
+        return name or None
+    except Exception:
+        return None
+
+
+def _rm_get_locking_processes(path: str) -> list[dict]:
+    """Vía Windows Restart Manager API: lista procesos que tienen handles abiertos
+    sobre `path`. Devuelve [{pid, name, service, session_id, start_time}, ...]
+    o [] si la API no está disponible o no hay bloqueos visibles. No requiere admin.
+    """
+    if sys.platform != "win32":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return []
+    try:
+        rstrtmgr = ctypes.WinDLL("rstrtmgr")
+    except OSError:
+        return []
+
+    CCH_RM_SESSION_KEY = 32
+    CCH_RM_MAX_APP_NAME = 255
+    CCH_RM_MAX_SVC_NAME = 63
+    ERROR_SUCCESS = 0
+    ERROR_MORE_DATA = 234
+
+    class RM_UNIQUE_PROCESS(ctypes.Structure):
+        _fields_ = [
+            ("dwProcessId", wintypes.DWORD),
+            ("ProcessStartTime", wintypes.FILETIME),
+        ]
+
+    class RM_PROCESS_INFO(ctypes.Structure):
+        _fields_ = [
+            ("Process", RM_UNIQUE_PROCESS),
+            ("strAppName", ctypes.c_wchar * (CCH_RM_MAX_APP_NAME + 1)),
+            ("strServiceShortName", ctypes.c_wchar * (CCH_RM_MAX_SVC_NAME + 1)),
+            ("ApplicationType", ctypes.c_int),
+            ("AppStatus", ctypes.c_ulong),
+            ("TSSessionId", wintypes.DWORD),
+            ("bRestartable", wintypes.BOOL),
+        ]
+
+    rstrtmgr.RmStartSession.argtypes = [
+        ctypes.POINTER(wintypes.DWORD), wintypes.DWORD, ctypes.c_wchar_p,
+    ]
+    rstrtmgr.RmStartSession.restype = wintypes.DWORD
+    rstrtmgr.RmRegisterResources.argtypes = [
+        wintypes.DWORD, wintypes.UINT, ctypes.POINTER(ctypes.c_wchar_p),
+        wintypes.UINT, ctypes.c_void_p, wintypes.UINT, ctypes.POINTER(ctypes.c_wchar_p),
+    ]
+    rstrtmgr.RmRegisterResources.restype = wintypes.DWORD
+    rstrtmgr.RmGetList.argtypes = [
+        wintypes.DWORD, ctypes.POINTER(wintypes.UINT), ctypes.POINTER(wintypes.UINT),
+        ctypes.POINTER(RM_PROCESS_INFO), ctypes.POINTER(wintypes.DWORD),
+    ]
+    rstrtmgr.RmGetList.restype = wintypes.DWORD
+    rstrtmgr.RmEndSession.argtypes = [wintypes.DWORD]
+    rstrtmgr.RmEndSession.restype = wintypes.DWORD
+
+    session = wintypes.DWORD()
+    session_key = (ctypes.c_wchar * (CCH_RM_SESSION_KEY + 1))()
+    rc = rstrtmgr.RmStartSession(ctypes.byref(session), 0, session_key)
+    if rc != ERROR_SUCCESS:
+        return []
+
+    try:
+        files_arr = (ctypes.c_wchar_p * 1)(path)
+        rc = rstrtmgr.RmRegisterResources(
+            session, 1, files_arr, 0, None, 0, None,
+        )
+        if rc != ERROR_SUCCESS:
+            return []
+
+        proc_needed = wintypes.UINT(0)
+        proc_count = wintypes.UINT(0)
+        reasons = wintypes.DWORD(0)
+
+        rc = rstrtmgr.RmGetList(
+            session, ctypes.byref(proc_needed), ctypes.byref(proc_count),
+            None, ctypes.byref(reasons),
+        )
+        if rc == ERROR_SUCCESS and proc_needed.value == 0:
+            return []
+        if rc != ERROR_MORE_DATA:
+            return []
+
+        n = proc_needed.value
+        procs = (RM_PROCESS_INFO * n)()
+        proc_count = wintypes.UINT(n)
+        rc = rstrtmgr.RmGetList(
+            session, ctypes.byref(proc_needed), ctypes.byref(proc_count),
+            procs, ctypes.byref(reasons),
+        )
+        if rc != ERROR_SUCCESS:
+            return []
+
+        from datetime import datetime
+        results: list[dict] = []
+        epoch_diff_100ns = 116444736000000000  # 1601-01-01 → 1970-01-01
+        for i in range(proc_count.value):
+            entry = procs[i]
+            ft = entry.Process.ProcessStartTime
+            start_dt = None
+            try:
+                ts100ns = (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+                if ts100ns > 0:
+                    start_dt = datetime.fromtimestamp(
+                        (ts100ns - epoch_diff_100ns) / 10_000_000
+                    )
+            except Exception:
+                pass
+            results.append({
+                "pid": entry.Process.dwProcessId,
+                "name": entry.strAppName,
+                "service": entry.strServiceShortName,
+                "session_id": entry.TSSessionId,
+                "start_time": start_dt,
+            })
+        return results
+    finally:
+        try:
+            rstrtmgr.RmEndSession(session)
+        except Exception:
+            pass
+
+
+def _find_orphan_runs_for_file(path: str, min_age_seconds: int = 120) -> list[dict]:
+    """Busca RunLogs en estado 'running' que toquen `path` y lleven al menos
+    `min_age_seconds` corriendo. Sync sqlite — pensado para llamarse desde
+    el thread sync de wait_for_file. Devuelve [] si no hay DB o falla."""
+    try:
+        from datetime import datetime, timedelta
+        from app.config import settings
+        import sqlite3
+        db_file = Path(settings.db_path)
+        if not db_file.exists():
+            return []
+        cutoff = (datetime.now() - timedelta(seconds=min_age_seconds)).isoformat()
+        fname = Path(path).name
+        # 'path' en pipeline_config aparece JSON-escapado, así que matcheamos por basename
+        like_basename = f"%{fname}%"
+        conn = sqlite3.connect(str(db_file), timeout=2)
+        try:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute(
+                """
+                SELECT r.id AS run_id, r.task_id, r.task_name, r.started_at
+                FROM run_logs r
+                JOIN tasks t ON t.id = r.task_id
+                WHERE r.status = 'running'
+                  AND r.started_at < ?
+                  AND (t.file_path = ? OR t.pipeline_config LIKE ?)
+                ORDER BY r.started_at ASC
+                LIMIT 5
+                """,
+                (cutoff, path, like_basename),
+            )
+            return [dict(row) for row in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
 def _lock_reason(path: str) -> str:
-    """Detecta el motivo probable por el que el archivo no está disponible."""
+    """Detecta el motivo y autor probable del bloqueo. Combina:
+    1) `.laccdb` parsing (Access)        → usuario + máquina
+    2) `~$archivo.xlsx` parsing (Excel)  → usuario
+    3) Windows Restart Manager API       → proceso, PID y hora de inicio
+    4) RunLog 'running' antiguo en DB    → indica orfanato de un run previo
+    """
     p = Path(path)
+    parts: list[str] = []
+
     if _is_onedrive_placeholder(path):
-        return "archivo OneDrive en la nube (descargando)"
-    lock_file = p.parent / f"~${p.name}"
-    if lock_file.exists():
-        return "Excel tiene el archivo abierto (~$lock detectado)"
-    tmp_files = list(p.parent.glob("*.tmp"))
-    if tmp_files:
-        return "posible sincronización de OneDrive en curso"
-    return "proceso externo desconocido"
+        parts.append("archivo OneDrive en la nube (descargando)")
+
+    # — Access (.laccdb) ————————————————————————————————————————————
+    if p.suffix.lower() in (".accdb", ".mdb"):
+        users = _read_laccdb_users(path)
+        if users:
+            shown = ", ".join(f"{u or '?'}@{c or '?'}" for c, u in users[:3])
+            extra = f" (+{len(users)-3} más)" if len(users) > 3 else ""
+            parts.append(f"Access lo tiene abierto: {shown}{extra}")
+
+    # — Excel (~$) ————————————————————————————————————————————————
+    excel_lock = p.parent / f"~${p.name}"
+    if excel_lock.exists():
+        owner = _read_xlsx_lock_owner(path)
+        if owner:
+            parts.append(f"Excel lo tiene abierto (~$lock, usuario: {owner})")
+        else:
+            parts.append("Excel lo tiene abierto (~$lock detectado)")
+
+    # — Restart Manager (cualquier OS handle) ————————————————————
+    rm_procs = _rm_get_locking_processes(path)
+    for proc in rm_procs:
+        start = proc.get("start_time")
+        start_str = start.strftime("%Y-%m-%d %H:%M:%S") if start else "?"
+        parts.append(
+            f"proceso {proc.get('name') or '?'} "
+            f"PID={proc.get('pid')} sesión={proc.get('session_id')} "
+            f"iniciado={start_str}"
+        )
+
+    # — RunLogs 'running' antiguos ————————————————————————————————
+    orphans = _find_orphan_runs_for_file(path)
+    for orun in orphans:
+        parts.append(
+            f"run anterior huérfano: task='{orun.get('task_name')}' "
+            f"run_id={orun.get('run_id')} iniciado={orun.get('started_at')}"
+        )
+
+    if not parts:
+        tmp_files = list(p.parent.glob("*.tmp"))
+        if tmp_files:
+            return "posible sincronización de OneDrive en curso"
+        return "proceso externo desconocido"
+
+    return "; ".join(parts)
 
 
 def wait_for_file(path: str, timeout: int, interval: int,
