@@ -24,6 +24,42 @@
 
 ---
 
+## 2026-05-25 — Feat: tab "Historial" en el modal de actividad
+
+**Commits relacionados:** sin commitear aún (working tree).
+
+**Motivo:** desde el modal de actividad sólo se veían ejecuciones en curso o reintentos pendientes. Para ver ejecuciones pasadas había que cerrarlo e ir a la página de Logs. Cuando se abre el modal filtrado por una tarea (botón de la fila), el contexto se pierde al saltar a Logs. El operador pidió una tercera pestaña con el historial reciente, respetando el filtro por tarea cuando aplica.
+
+**Qué cambió:**
+
+- **`app/static/index.html`** (sólo frontend — el endpoint `GET /api/logs` ya soportaba `task_id` + paginación; se reutiliza tal cual):
+  - **Tercer tab** "Historial" en `#modal-activity` con icono `fa-clock-rotate-left` y chip con el total real (no sólo lo mostrado).
+  - **Panel de historial** con tabla: Tarea / Inicio / Duración / Intento (badge "Reintento N" si aplica) / Estado (reutiliza `runStatusBadge()`) / Acciones. Si `error_msg` existe, se muestra truncado bajo el nombre de la tarea con `title` completo en hover.
+  - **Carga lazy**: `_activityHistoryLoaded` flag se resetea en `openActivityModal()` y `_loadActivityHistory()` corre la primera vez que el usuario hace click en el tab. Evita pegarle a `/logs` si el operador no abre ese tab. El polling automático (5s) sigue **solo** corriendo para running/pending — el historial NO se auto-refresca para no introducir ruido visual mientras se lee.
+  - **Botón de refresh** del modal (`<i class="fa-arrows-rotate">`) ahora llama a `_refreshActivity()`, que invoca `loadActivity()` siempre y `_loadActivityHistory()` adicional si el tab activo es history. Así una sola pulsación cubre los 3 tabs.
+  - **Filtro respetado**: si el modal se abrió desde el botón por fila, `_activityFilterTaskId` se pasa como query param `task_id=` al endpoint. El info-strip muestra "Mostrando N de M ejecuciones de esta tarea".
+  - **Filtrado client-side de `status=running`** en el historial: el endpoint puede devolverlas mezcladas (no soporta `exclude_status`), pero las activas ya viven en el tab 1. Se filtran en JS antes de renderizar para evitar duplicación visual.
+  - **Link "Ver historial completo →"** abajo a la derecha: `_actGoToLogsPage()` cierra el modal y navega a la página `logs`, propagando el filtro de tarea vía `_logNavTaskId` (variable global ya existente que `loadLogs()` consume al cambiar de página).
+  - Texto del footer actualizado para aclarar que el auto-refresh aplica sólo a las tabs en vivo, y que el historial usa el botón manual.
+
+**Blast radius:**
+
+- **Sin cambios en el backend.** El endpoint `/api/logs` ya soportaba `task_id`, `status`, `page`, `page_size` — el frontend sólo lo invoca con `page=1&page_size=25`. Si en algún momento se quiere paginar el historial dentro del modal, hay que agregar controles UI (el endpoint ya lo soporta).
+- **No afecta los 2 tabs existentes**: `loadActivity()` y el polling siguen exactamente igual. Sólo se le agregó `_activityCurrentTab` y `_activityHistoryLoaded` para gestionar el nuevo panel.
+- **Performance**: la carga inicial del historial filtra al cliente; con `page_size=25` el filtrado de running es despreciable. Si una tarea muy ruidosa concentra varias running, podrían colarse en los 25 más recientes y reducir el conteo visible — caso muy improbable dado el N de tareas concurrentes esperado.
+- Frontend: el chip del header del dashboard (`#activity-count`) sigue reflejando sólo `running + pending` — no incluye el historial (sería ruido y la métrica es "lo que está pasando", no "lo que ya pasó").
+
+**Documentación actualizada:** este `CHANGELOG_AI.md`.
+
+**Notas para futuro:**
+
+- Para paginar el historial dentro del modal: añadir botones prev/next o "Cargar más" que use el endpoint con `page=N+1` y append a la lista. Hoy es un snapshot fijo de 25.
+- Si en el futuro el endpoint `/api/logs` recibe un parámetro `exclude_status`, eliminar el filtro client-side `r.status !== 'running'` en `_loadActivityHistory()` y pasarlo al backend (más eficiente con N grandes).
+- El icono `fa-clock-rotate-left` requiere Font Awesome 6 (ya cargado por CDN); si en algún momento se hace self-host de FA, verificar que está incluido.
+- La función `_actGoToLogsPage()` depende de la variable global `_logNavTaskId` definida en [index.html:1676](app/static/index.html#L1676) y consumida por `loadLogs()`. Si esa convención cambia, hay que sincronizar.
+
+---
+
 ## 2026-05-25 — Feat: modal de actividad en vivo (ejecuciones activas + reintentos pendientes cancelables)
 
 **Commits relacionados:** sin commitear aún (working tree).

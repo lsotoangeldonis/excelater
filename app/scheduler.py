@@ -22,7 +22,7 @@ from app.database import (
     AsyncSessionLocal, Task, RunLog, RunStatus, ScheduleType, TaskStatus,
     NotificationRule, ReportSchedule,
 )
-from app.excel_engine import EngineConfig, run_update
+from app.excel_engine import EngineConfig, run_update, current_run_id_var
 
 
 scheduler = AsyncIOScheduler(timezone=settings.timezone)
@@ -123,6 +123,11 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
                 )
 
         await db.commit()
+
+    # Publicar el run_id actual en el ContextVar para que _lock_reason()
+    # (en threads sync vía asyncio.to_thread) pueda excluir este mismo run
+    # al buscar "RunLogs huérfanos" y comparar contra start_time de procesos.
+    current_run_id_var.set(run_id)
 
     # Ejecutar fuera de la sesión DB para no bloquearla
     task_type = getattr(task, "task_type", None) or "excel"

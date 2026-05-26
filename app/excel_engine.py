@@ -7,8 +7,17 @@ import time
 import logging
 import threading
 import traceback
+import contextvars
 from pathlib import Path
 from dataclasses import dataclass, field
+
+
+# Run actualmente en curso (lo setea scheduler.execute_task antes de lanzar el
+# trabajo COM). Permite que _lock_reason() distinga "huérfano de run previo"
+# vs "este mismo run". Propagado a threads vía asyncio.to_thread.
+current_run_id_var: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "excelater_current_run_id", default=None,
+)
 
 
 # ── win32com opcional ─────────────────────────────────────────────────────────
@@ -315,10 +324,14 @@ def _rm_get_locking_processes(path: str) -> list[dict]:
             pass
 
 
-def _find_orphan_runs_for_file(path: str, min_age_seconds: int = 120) -> list[dict]:
+def _find_orphan_runs_for_file(
+    path: str,
+    exclude_run_id: int | None = None,
+    min_age_seconds: int = 60,
+) -> list[dict]:
     """Busca RunLogs en estado 'running' que toquen `path` y lleven al menos
-    `min_age_seconds` corriendo. Sync sqlite — pensado para llamarse desde
-    el thread sync de wait_for_file. Devuelve [] si no hay DB o falla."""
+    `min_age_seconds` corriendo. Excluye `exclude_run_id` (el run actual).
+    Sync sqlite — pensado para llamarse desde el thread sync de wait_for_file."""
     try:
         from datetime import datetime, timedelta
         from app.config import settings
@@ -328,24 +341,24 @@ def _find_orphan_runs_for_file(path: str, min_age_seconds: int = 120) -> list[di
             return []
         cutoff = (datetime.now() - timedelta(seconds=min_age_seconds)).isoformat()
         fname = Path(path).name
-        # 'path' en pipeline_config aparece JSON-escapado, así que matcheamos por basename
         like_basename = f"%{fname}%"
+        sql = """
+            SELECT r.id AS run_id, r.task_id, r.task_name, r.started_at
+            FROM run_logs r
+            JOIN tasks t ON t.id = r.task_id
+            WHERE r.status = 'running'
+              AND r.started_at < ?
+              AND (t.file_path = ? OR t.pipeline_config LIKE ?)
+        """
+        params: list = [cutoff, path, like_basename]
+        if exclude_run_id is not None:
+            sql += " AND r.id != ?"
+            params.append(exclude_run_id)
+        sql += " ORDER BY r.started_at ASC LIMIT 5"
         conn = sqlite3.connect(str(db_file), timeout=2)
         try:
             conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                """
-                SELECT r.id AS run_id, r.task_id, r.task_name, r.started_at
-                FROM run_logs r
-                JOIN tasks t ON t.id = r.task_id
-                WHERE r.status = 'running'
-                  AND r.started_at < ?
-                  AND (t.file_path = ? OR t.pipeline_config LIKE ?)
-                ORDER BY r.started_at ASC
-                LIMIT 5
-                """,
-                (cutoff, path, like_basename),
-            )
+            cur = conn.execute(sql, params)
             return [dict(row) for row in cur.fetchall()]
         finally:
             conn.close()
@@ -353,15 +366,55 @@ def _find_orphan_runs_for_file(path: str, min_age_seconds: int = 120) -> list[di
         return []
 
 
+def _get_run_started_at(run_id: int):
+    """Devuelve datetime de inicio del RunLog (o None si no se encuentra)."""
+    if run_id is None:
+        return None
+    try:
+        from datetime import datetime
+        from app.config import settings
+        import sqlite3
+        db_file = Path(settings.db_path)
+        if not db_file.exists():
+            return None
+        conn = sqlite3.connect(str(db_file), timeout=2)
+        try:
+            cur = conn.execute(
+                "SELECT started_at FROM run_logs WHERE id = ?", (run_id,)
+            )
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return None
+            return datetime.fromisoformat(row[0])
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
+def _is_office_process(name: str) -> bool:
+    """True si el nombre devuelto por Restart Manager parece una app Office
+    que típicamente abrimos vía COM (potencial huérfano)."""
+    if not name:
+        return False
+    n = name.lower()
+    return any(s in n for s in ("excel", "access", "word", "outlook", "powerpoint"))
+
+
 def _lock_reason(path: str) -> str:
     """Detecta el motivo y autor probable del bloqueo. Combina:
     1) `.laccdb` parsing (Access)        → usuario + máquina
     2) `~$archivo.xlsx` parsing (Excel)  → usuario
     3) Windows Restart Manager API       → proceso, PID y hora de inicio
-    4) RunLog 'running' antiguo en DB    → indica orfanato de un run previo
+       Marca como HUÉRFANO si es un proceso Office iniciado antes del run actual.
+    4) RunLog 'running' antiguo en DB (excluyendo el run actual)
     """
     p = Path(path)
     parts: list[str] = []
+
+    # Contexto del run actual (si lo hay)
+    current_run_id = current_run_id_var.get()
+    current_run_started = _get_run_started_at(current_run_id) if current_run_id else None
 
     if _is_onedrive_placeholder(path):
         parts.append("archivo OneDrive en la nube (descargando)")
@@ -388,14 +441,22 @@ def _lock_reason(path: str) -> str:
     for proc in rm_procs:
         start = proc.get("start_time")
         start_str = start.strftime("%Y-%m-%d %H:%M:%S") if start else "?"
+        name = proc.get("name") or "?"
+        is_orphan = (
+            current_run_started is not None
+            and start is not None
+            and start < current_run_started
+            and _is_office_process(name)
+        )
+        label = "[HUÉRFANO] " if is_orphan else ""
         parts.append(
-            f"proceso {proc.get('name') or '?'} "
+            f"{label}proceso {name} "
             f"PID={proc.get('pid')} sesión={proc.get('session_id')} "
             f"iniciado={start_str}"
         )
 
-    # — RunLogs 'running' antiguos ————————————————————————————————
-    orphans = _find_orphan_runs_for_file(path)
+    # — RunLogs 'running' (excluyendo el run actual) ————————————————
+    orphans = _find_orphan_runs_for_file(path, exclude_run_id=current_run_id)
     for orun in orphans:
         parts.append(
             f"run anterior huérfano: task='{orun.get('task_name')}' "
