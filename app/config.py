@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     retry_max: int = 0      # 0 = sin retry global; la tarea puede sobreescribirlo
     retry_delay_s: int = 60 # Segundos de espera entre reintentos
 
+    # Multi-schedule (MAX_SCHEDULES_PER_TASK en .env)
+    max_schedules_per_task: int = 100  # Máximo de entradas por tarea/reporte
+
     # CORS (separar múltiples orígenes con coma; "*" = todos)
     cors_origins: str = "*"
 

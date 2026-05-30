@@ -68,6 +68,29 @@ class ScheduleConfig(BaseModel):
     start_minute: Optional[int] = 0
     # CRON
     cron: Optional[str] = None
+    # MULTI (lista de entradas de cualquier tipo)
+    schedules: Optional[list[dict]] = None
+
+
+def _validate_schedule(schedule_type: ScheduleType, config: ScheduleConfig) -> None:
+    """Valida consistencia para ScheduleType.MULTI."""
+    if schedule_type != ScheduleType.MULTI:
+        return
+    entries = config.schedules or []
+    if not entries:
+        raise HTTPException(400, "El tipo 'multi' requiere al menos una entrada en 'schedules'")
+    if len(entries) > settings.max_schedules_per_task:
+        raise HTTPException(
+            400,
+            f"Máximo {settings.max_schedules_per_task} programaciones por tarea/reporte",
+        )
+    valid_types = {st.value for st in ScheduleType if st != ScheduleType.MULTI}
+    for i, e in enumerate(entries):
+        if "type" not in e or e["type"] not in valid_types:
+            raise HTTPException(
+                400,
+                f"Entrada {i}: 'type' debe ser uno de {sorted(valid_types)}",
+            )
 
 
 class TaskCreate(BaseModel):
@@ -230,6 +253,7 @@ async def list_tasks(db: AsyncSession = Depends(get_db)):
 @router.post("/tasks", status_code=201, dependencies=[Depends(verify_api_key)])
 async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
     _validate_file_path(body.file_path)
+    _validate_schedule(body.schedule_type, body.schedule_config)
 
     task = Task(
         id=str(uuid.uuid4()),
@@ -260,6 +284,7 @@ async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
 @router.post("/tasks/pipeline", status_code=201, dependencies=[Depends(verify_api_key)])
 async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depends(get_db)):
     """Crea una tarea de tipo Pipeline Access ETL (Excel → Access)."""
+    _validate_schedule(body.schedule_type, body.schedule_config)
     # Validar BD Access
     from app.excel_engine import resolve_path
     access_db_resolved = resolve_path(body.access_db)
@@ -332,6 +357,7 @@ async def create_pipeline_task(body: PipelineTaskCreate, db: AsyncSession = Depe
 @router.post("/tasks/pipeline/reposicion", status_code=201, dependencies=[Depends(verify_api_key)])
 async def create_reposicion_pipeline_task(body: ReposicionTaskCreate, db: AsyncSession = Depends(get_db)):
     """Crea una tarea pipeline de Reposición con pasos preconfigurados de Access."""
+    _validate_schedule(body.schedule_type, body.schedule_config)
     from app.excel_engine import resolve_path
 
     access_db_resolved = resolve_path(body.access_db)
@@ -432,6 +458,7 @@ async def create_weekly_excel_copy_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Crea una tarea de tipo workflow: copia semanal de Excel por semana ISO."""
+    _validate_schedule(body.schedule_type, body.schedule_config)
     folder_resolved = resolve_path(body.folder)
     if not Path(folder_resolved).exists():
         raise HTTPException(
@@ -632,6 +659,8 @@ async def update_task(task_id: str, body: TaskUpdate, db: AsyncSession = Depends
     if not task or task.deleted_at is not None:
         raise HTTPException(404, "Tarea no encontrada")
 
+    if body.schedule_type is not None and body.schedule_config is not None:
+        _validate_schedule(body.schedule_type, body.schedule_config)
     if body.file_path is not None:
         _validate_file_path(body.file_path)
         task.file_path = body.file_path
@@ -1772,6 +1801,7 @@ async def list_reports(db: AsyncSession = Depends(get_db)):
 
 @router.post("/reports", status_code=201, dependencies=[Depends(verify_api_key)])
 async def create_report(body: ReportScheduleCreate, db: AsyncSession = Depends(get_db)):
+    _validate_schedule(body.schedule_type, body.schedule_config)
     s = ReportSchedule(
         name=body.name,
         schedule_type=body.schedule_type,
@@ -1797,6 +1827,8 @@ async def update_report(
     s = await db.get(ReportSchedule, report_id)
     if not s:
         raise HTTPException(404, "Reporte no encontrado")
+    if body.schedule_type is not None and body.schedule_config is not None:
+        _validate_schedule(body.schedule_type, body.schedule_config)
     if body.name is not None:
         s.name = body.name
     if body.schedule_type is not None:

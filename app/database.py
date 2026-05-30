@@ -44,6 +44,7 @@ class ScheduleType(str, enum.Enum):
     ONCE_DAILY   = "once_daily"    # Una vez al día a una hora
     INTERVAL     = "interval"      # Repetir cada N minutos/horas
     CRON         = "cron"          # Expresión cron libre
+    MULTI        = "multi"         # Múltiples entradas combinadas con OR
 
 
 class TriggerType(str, enum.Enum):

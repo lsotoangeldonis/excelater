@@ -442,6 +442,13 @@ def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
         triggers = [_build_cron_trigger(e) for e in exprs]
         return triggers[0] if len(triggers) == 1 else OrTrigger(triggers)
 
+    if schedule_type == ScheduleType.MULTI:
+        entries = schedule_config.get("schedules", [])
+        if not entries:
+            raise ValueError("MULTI schedule sin entradas (schedules vacío)")
+        triggers = [build_trigger(ScheduleType(e["type"]), e) for e in entries]
+        return triggers[0] if len(triggers) == 1 else OrTrigger(triggers)
+
     raise ValueError(f"Tipo de programación desconocido: {schedule_type}")
 
 

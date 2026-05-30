@@ -343,6 +343,26 @@ textarea { resize: vertical; min-height: 70px; }
 .sch-panel { display: none; }
 .sch-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+/* ── Multi-schedule chips ── */
+.sch-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; min-height: 0; }
+.sch-list-empty { font-size: 12px; color: var(--text2); font-family: var(--mono); padding: 6px 0; }
+.sch-chip {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 7px 12px;
+}
+.sch-chip-label { font-size: 12px; font-family: var(--mono); color: var(--text); }
+.sch-chip-remove {
+  background: none; border: none; color: var(--text2);
+  cursor: pointer; font-size: 16px; line-height: 1;
+  padding: 0 0 0 10px; transition: color .15s;
+}
+.sch-chip-remove:hover { color: #f87171; }
+.sch-add-widget {
+  border: 1px solid var(--border2); border-radius: 6px;
+  padding: 12px; margin-top: 4px;
+}
+
 /* ── Utility ── */
 .hint-mono { font-size: 12px; color: var(--text2); font-family: var(--mono); }
 .hint-text { font-size: 12px; color: var(--text2); }
@@ -1189,11 +1209,17 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
       </div>
 
       <div class="section-label">PROGRAMACIÓN</div>
-      <div class="schedule-builder">
+      <!-- Lista de programaciones activas -->
+      <div id="sch-list" class="sch-list"></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-add-sch" style="margin-bottom:8px" onclick="openAddSchEntry()">
+        <i class="fa-solid fa-plus"></i> Agregar programación
+      </button>
+      <!-- Widget inline para nueva entrada (oculto por defecto) -->
+      <div id="sch-add-widget" class="sch-add-widget" style="display:none">
         <div class="sch-tabs">
-          <button class="sch-tab active" onclick="setSchTab('once','this')" id="tab-once">Una vez al día</button>
-          <button class="sch-tab" onclick="setSchTab('interval','this')" id="tab-interval">Repetir cada…</button>
-          <button class="sch-tab" onclick="setSchTab('cron','this')" id="tab-cron">Expresión Cron</button>
+          <button class="sch-tab active" onclick="setSchTab('once')" id="tab-once">Una vez al día</button>
+          <button class="sch-tab" onclick="setSchTab('interval')" id="tab-interval">Repetir cada…</button>
+          <button class="sch-tab" onclick="setSchTab('cron')" id="tab-cron">Expresión Cron</button>
         </div>
 
         <div class="sch-panel active" id="sch-once">
@@ -1232,6 +1258,13 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             <input id="f-cron" type="text" placeholder="0 6 * * 1-5" value="0 6 * * *">
             <span class="hint-sm">Ej: <code>0 6 * * 1-5</code> = lunes a viernes a las 6:00am. Combina varias con <code>;</code>: <code>0 4 * * *; 0 0 * * 1</code> = diario 4am + lunes 00:00.</span>
           </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="btn btn-primary btn-sm" onclick="confirmAddSchEntry()">
+            <i class="fa-solid fa-check"></i> Agregar
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="cancelAddSchEntry()">Cancelar</button>
         </div>
       </div>
     </div>
@@ -1334,7 +1367,13 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         </div>
       </div>
       <div class="section-label section-label-compact">PROGRAMACIÓN</div>
-      <div class="schedule-builder">
+      <!-- Lista de programaciones activas -->
+      <div id="sr-sch-list" class="sch-list"></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="sr-btn-add-sch" style="margin-bottom:8px" onclick="openSrAddSchEntry()">
+        <i class="fa-solid fa-plus"></i> Agregar programación
+      </button>
+      <!-- Widget inline para nueva entrada (oculto por defecto) -->
+      <div id="sr-sch-add-widget" class="sch-add-widget" style="display:none">
         <div class="sch-tabs">
           <button type="button" class="sch-tab active" onclick="setSrTab('once')" id="sr-tab-once">Una vez al día</button>
           <button type="button" class="sch-tab" onclick="setSrTab('interval')" id="sr-tab-interval">Repetir cada…</button>
@@ -1354,7 +1393,14 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
           <div class="form-group form-full">
             <label>Expresión cron</label>
             <input id="sr-cron" type="text" placeholder="0 8 * * *" value="0 8 * * *">
+            <span class="hint-sm">Ej: <code>0 8 * * *</code> = 8am todos los días. Combina con <code>;</code>: <code>0 8 * * *; 0 12 * * 1</code> = diario 8am + lunes 12pm.</span>
           </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="btn btn-primary btn-sm" onclick="confirmSrAddSchEntry()">
+            <i class="fa-solid fa-check"></i> Agregar
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSrAddSchEntry()">Cancelar</button>
         </div>
       </div>
     </div>
@@ -2312,7 +2358,10 @@ function openNewTask() {
   document.getElementById('notif-section').style.display = 'none';
   document.getElementById('notif-rules-list').innerHTML = '';
   setTaskType('excel');
-  setSchTab('once');
+  _schedEntries = [{ type: 'once_daily', hour: 6, minute: 0 }];
+  _renderSchList();
+  document.getElementById('sch-add-widget').style.display = 'none';
+  document.getElementById('btn-add-sch').style.display = '';
   document.getElementById('modal-task').classList.add('open');
 }
 
@@ -2330,21 +2379,7 @@ async function copyTask(id) {
   document.getElementById('f-retries').value = t.max_retries ?? 0;
   document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
-  const cfg = t.schedule_config || {};
-  if (t.schedule_type === 'once_daily') {
-    setSchTab('once');
-    document.getElementById('f-hour').value = cfg.hour ?? 6;
-    document.getElementById('f-min').value  = cfg.minute ?? 0;
-  } else if (t.schedule_type === 'interval') {
-    setSchTab('interval');
-    document.getElementById('f-shour').value  = cfg.start_hour ?? 6;
-    document.getElementById('f-smin').value   = cfg.start_minute ?? 0;
-    document.getElementById('f-ihours').value = cfg.hours ?? 1;
-    document.getElementById('f-imins').value  = cfg.minutes ?? 60;
-  } else {
-    setSchTab('cron');
-    document.getElementById('f-cron').value = cfg.cron ?? '0 6 * * *';
-  }
+  _loadSchEntries(t.schedule_type, t.schedule_config);
   document.getElementById('notif-section').style.display = 'none';
   document.getElementById('notif-rules-list').innerHTML = '';
   document.getElementById('modal-task').classList.add('open');
@@ -2650,21 +2685,7 @@ async function openEditTask(id) {
   document.getElementById('f-retries').value = t.max_retries ?? 0;
   document.getElementById('f-retry-delay').value = t.retry_delay_s ?? 60;
 
-  const cfg = t.schedule_config || {};
-  if (t.schedule_type === 'once_daily') {
-    setSchTab('once');
-    document.getElementById('f-hour').value = cfg.hour ?? 6;
-    document.getElementById('f-min').value  = cfg.minute ?? 0;
-  } else if (t.schedule_type === 'interval') {
-    setSchTab('interval');
-    document.getElementById('f-shour').value  = cfg.start_hour ?? 6;
-    document.getElementById('f-smin').value   = cfg.start_minute ?? 0;
-    document.getElementById('f-ihours').value = cfg.hours ?? 1;
-    document.getElementById('f-imins').value  = cfg.minutes ?? 60;
-  } else {
-    setSchTab('cron');
-    document.getElementById('f-cron').value = cfg.cron ?? '0 6 * * *';
-  }
+  _loadSchEntries(t.schedule_type, t.schedule_config);
   document.getElementById('notif-section').style.display = 'block';
   loadNotifRules(id);
   document.getElementById('modal-task').classList.add('open');
@@ -2676,22 +2697,9 @@ async function saveTask() {
 
   const taskType = document.querySelector('input[name="f-task-type"]:checked')?.value || 'excel';
 
-  let schedule_type, schedule_config;
-  if (currentSchTab === 'once') {
-    schedule_type = 'once_daily';
-    schedule_config = { hour: +document.getElementById('f-hour').value, minute: +document.getElementById('f-min').value };
-  } else if (currentSchTab === 'interval') {
-    schedule_type = 'interval';
-    schedule_config = {
-      start_hour: +document.getElementById('f-shour').value,
-      start_minute: +document.getElementById('f-smin').value,
-      hours: +document.getElementById('f-ihours').value,
-      minutes: +document.getElementById('f-imins').value,
-    };
-  } else {
-    schedule_type = 'cron';
-    schedule_config = { cron: document.getElementById('f-cron').value.trim() };
-  }
+  const schedulePay = _buildSchedulePayload(_schedEntries);
+  if (!schedulePay) { toast('Agrega al menos una programaci\u00F3n', 'error'); return; }
+  const { schedule_type, schedule_config } = schedulePay;
 
   try {
     if (taskType === 'workflow') {
@@ -2877,12 +2885,178 @@ async function deleteTask(id, name) {
 }
 
 // ══════════════════════════════════════════════════════
+// MULTI-SCHEDULE STATE & HELPERS
+// ══════════════════════════════════════════════════════
+let _schedEntries = [];    // Entradas de programación para la tarea activa
+let _srSchedEntries = [];  // Ídem para el reporte activo
+
+function _schEntryLabel(e) {
+  const h  = String(e.hour  ?? e.start_hour  ?? 0).padStart(2, '0');
+  const m  = String(e.minute ?? e.start_minute ?? 0).padStart(2, '0');
+  if (e.type === 'once_daily') return `\u23F0 Diario ${h}:${m}`;
+  if (e.type === 'interval') {
+    const rep = (e.hours >= 1) ? `cada ${e.hours}h` : `cada ${e.minutes}min`;
+    return `\uD83D\uDD01 Desde ${String(e.start_hour ?? 0).padStart(2,'0')}:${String(e.start_minute ?? 0).padStart(2,'0')} \u2014 ${rep}`;
+  }
+  if (e.type === 'cron') return `\uD83D\uDCC5 CRON: ${e.cron}`;
+  return e.type;
+}
+
+function _renderSchList() {
+  const el = document.getElementById('sch-list');
+  if (!el) return;
+  if (!_schedEntries.length) {
+    el.innerHTML = '<div class="sch-list-empty">Sin programaci\u00F3n \u2014 a\u00F1ade al menos una entrada.</div>';
+    return;
+  }
+  el.innerHTML = _schedEntries.map((e, i) =>
+    `<div class="sch-chip">
+      <span class="sch-chip-label">${_schEntryLabel(e)}</span>
+      <button type="button" class="sch-chip-remove" onclick="removeSchEntry(${i})" title="Eliminar">&times;</button>
+    </div>`
+  ).join('');
+}
+
+function _srRenderSchList() {
+  const el = document.getElementById('sr-sch-list');
+  if (!el) return;
+  if (!_srSchedEntries.length) {
+    el.innerHTML = '<div class="sch-list-empty">Sin programaci\u00F3n \u2014 a\u00F1ade al menos una entrada.</div>';
+    return;
+  }
+  el.innerHTML = _srSchedEntries.map((e, i) =>
+    `<div class="sch-chip">
+      <span class="sch-chip-label">${_schEntryLabel(e)}</span>
+      <button type="button" class="sch-chip-remove" onclick="removeSrSchEntry(${i})" title="Eliminar">&times;</button>
+    </div>`
+  ).join('');
+}
+
+// Carga un schedule existente en la lista (back-compat: tipo simple o multi)
+function _loadSchEntries(schedule_type, schedule_config) {
+  const cfg = schedule_config || {};
+  if (schedule_type === 'multi') {
+    _schedEntries = (cfg.schedules || []).map(e => ({...e}));
+  } else {
+    _schedEntries = [{ type: schedule_type, ...cfg }];
+  }
+  _renderSchList();
+  document.getElementById('sch-add-widget').style.display = 'none';
+  document.getElementById('btn-add-sch').style.display = '';
+}
+
+function _srLoadSchEntries(schedule_type, schedule_config) {
+  const cfg = schedule_config || {};
+  if (schedule_type === 'multi') {
+    _srSchedEntries = (cfg.schedules || []).map(e => ({...e}));
+  } else {
+    _srSchedEntries = [{ type: schedule_type, ...cfg }];
+  }
+  _srRenderSchList();
+  document.getElementById('sr-sch-add-widget').style.display = 'none';
+  document.getElementById('sr-btn-add-sch').style.display = '';
+}
+
+// Construye el payload {schedule_type, schedule_config} desde la lista
+function _buildSchedulePayload(entries) {
+  if (!entries.length) return null;
+  if (entries.length === 1) {
+    const { type, ...cfg } = entries[0];
+    return { schedule_type: type, schedule_config: cfg };
+  }
+  return { schedule_type: 'multi', schedule_config: { schedules: entries } };
+}
+
+// ── Tarea: abrir/cerrar/confirmar widget de agregar entrada ──
+function openAddSchEntry() {
+  setSchTab('once');
+  document.getElementById('f-hour').value = 6;
+  document.getElementById('f-min').value = 0;
+  document.getElementById('f-shour').value = 6;
+  document.getElementById('f-smin').value = 0;
+  document.getElementById('f-ihours').value = 1;
+  document.getElementById('f-imins').value = 60;
+  document.getElementById('f-cron').value = '0 6 * * *';
+  document.getElementById('sch-add-widget').style.display = '';
+  document.getElementById('btn-add-sch').style.display = 'none';
+}
+
+function cancelAddSchEntry() {
+  document.getElementById('sch-add-widget').style.display = 'none';
+  document.getElementById('btn-add-sch').style.display = '';
+}
+
+function confirmAddSchEntry() {
+  let entry;
+  if (currentSchTab === 'once') {
+    entry = { type: 'once_daily', hour: +document.getElementById('f-hour').value, minute: +document.getElementById('f-min').value };
+  } else if (currentSchTab === 'interval') {
+    entry = { type: 'interval', start_hour: +document.getElementById('f-shour').value, start_minute: +document.getElementById('f-smin').value, hours: +document.getElementById('f-ihours').value, minutes: +document.getElementById('f-imins').value };
+  } else {
+    const cron = document.getElementById('f-cron').value.trim();
+    if (!cron) { toast('La expresi\u00F3n cron es obligatoria', 'error'); return; }
+    entry = { type: 'cron', cron };
+  }
+  if (_schedEntries.length >= 100) { toast('M\u00E1ximo 100 programaciones por tarea', 'error'); return; }
+  _schedEntries.push(entry);
+  _renderSchList();
+  cancelAddSchEntry();
+}
+
+function removeSchEntry(idx) {
+  _schedEntries.splice(idx, 1);
+  _renderSchList();
+}
+
+// ── Reporte: abrir/cerrar/confirmar widget de agregar entrada ──
+function openSrAddSchEntry() {
+  setSrTab('once');
+  document.getElementById('sr-hour').value = 8;
+  document.getElementById('sr-min').value = 0;
+  document.getElementById('sr-shour').value = 6;
+  document.getElementById('sr-smin').value = 0;
+  document.getElementById('sr-ihours').value = 4;
+  document.getElementById('sr-imins').value = 60;
+  document.getElementById('sr-cron').value = '0 8 * * *';
+  document.getElementById('sr-sch-add-widget').style.display = '';
+  document.getElementById('sr-btn-add-sch').style.display = 'none';
+}
+
+function cancelSrAddSchEntry() {
+  document.getElementById('sr-sch-add-widget').style.display = 'none';
+  document.getElementById('sr-btn-add-sch').style.display = '';
+}
+
+function confirmSrAddSchEntry() {
+  let entry;
+  if (currentSrTab === 'once') {
+    entry = { type: 'once_daily', hour: +document.getElementById('sr-hour').value, minute: +document.getElementById('sr-min').value };
+  } else if (currentSrTab === 'interval') {
+    entry = { type: 'interval', start_hour: +document.getElementById('sr-shour').value, start_minute: +document.getElementById('sr-smin').value, hours: +document.getElementById('sr-ihours').value, minutes: +document.getElementById('sr-imins').value };
+  } else {
+    const cron = document.getElementById('sr-cron').value.trim();
+    if (!cron) { toast('La expresi\u00F3n cron es obligatoria', 'error'); return; }
+    entry = { type: 'cron', cron };
+  }
+  if (_srSchedEntries.length >= 100) { toast('M\u00E1ximo 100 programaciones por reporte', 'error'); return; }
+  _srSchedEntries.push(entry);
+  _srRenderSchList();
+  cancelSrAddSchEntry();
+}
+
+function removeSrSchEntry(idx) {
+  _srSchedEntries.splice(idx, 1);
+  _srRenderSchList();
+}
+
+// ══════════════════════════════════════════════════════
 // SCHEDULE TABS
 // ══════════════════════════════════════════════════════
 function setSchTab(tab) {
   currentSchTab = tab;
-  document.querySelectorAll('.sch-tab').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.sch-panel').forEach(p => p.classList.remove('active'));
+  const widget = document.getElementById('sch-add-widget');
+  widget.querySelectorAll('.sch-tab').forEach(b => b.classList.remove('active'));
+  widget.querySelectorAll('.sch-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('sch-' + tab).classList.add('active');
 }
@@ -2940,12 +3114,18 @@ function runStatusBadge(s) {
 
 function schLabel(t) {
   const cfg = t.schedule_config || {};
+  if (t.schedule_type === 'multi') {
+    const entries = cfg.schedules || [];
+    if (!entries.length) return 'Sin programaci\u00F3n';
+    if (entries.length === 1) return _schEntryLabel(entries[0]);
+    return `${entries.length} programaciones`;
+  }
   if (t.schedule_type === 'once_daily')
     return `Diario ${String(cfg.hour||0).padStart(2,'0')}:${String(cfg.minute||0).padStart(2,'0')}`;
   if (t.schedule_type === 'interval') {
     const h = cfg.hours; const m = cfg.minutes;
     const rep = h >= 1 ? `cada ${h}h` : `cada ${m}min`;
-    return `Desde ${String(cfg.start_hour||0).padStart(2,'0')}:${String(cfg.start_minute||0).padStart(2,'0')} — ${rep}`;
+    return `Desde ${String(cfg.start_hour||0).padStart(2,'0')}:${String(cfg.start_minute||0).padStart(2,'0')} \u2014 ${rep}`;
   }
   if (t.schedule_type === 'cron') return `CRON: ${cfg.cron}`;
   return t.schedule_type;
@@ -3387,6 +3567,10 @@ async function openNewSchedReport() {
   document.getElementById('sr-imins').value = 60;
   document.getElementById('sr-cron').value = '0 8 * * *';
   setSrTab('once');
+  _srSchedEntries = [{ type: 'once_daily', hour: 8, minute: 0 }];
+  _srRenderSchList();
+  document.getElementById('sr-sch-add-widget').style.display = 'none';
+  document.getElementById('sr-btn-add-sch').style.display = '';
   updateSrChannelUI();
   await populateSrTaskSelect([]);
   document.getElementById('modal-schedreport').classList.add('open');
@@ -3434,17 +3618,9 @@ async function saveSchedReport() {
   }
   if (!recipients.length) { toast('Agrega al menos un destinatario', 'error'); return; }
 
-  let schedule_type, schedule_config;
-  if (currentSrTab === 'once') {
-    schedule_type = 'once_daily';
-    schedule_config = { hour: +document.getElementById('sr-hour').value, minute: +document.getElementById('sr-min').value };
-  } else if (currentSrTab === 'interval') {
-    schedule_type = 'interval';
-    schedule_config = { start_hour: +document.getElementById('sr-shour').value, start_minute: +document.getElementById('sr-smin').value, hours: +document.getElementById('sr-ihours').value, minutes: +document.getElementById('sr-imins').value };
-  } else {
-    schedule_type = 'cron';
-    schedule_config = { cron: document.getElementById('sr-cron').value.trim() };
-  }
+  const schedulePay = _buildSchedulePayload(_srSchedEntries);
+  if (!schedulePay) { toast('Agrega al menos una programaci\u00F3n', 'error'); return; }
+  const { schedule_type, schedule_config } = schedulePay;
 
   const selectedTasks = [...document.getElementById('sr-tasks').selectedOptions].map(o => o.value);
 
