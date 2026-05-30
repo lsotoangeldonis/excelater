@@ -362,6 +362,20 @@ textarea { resize: vertical; min-height: 70px; }
   border: 1px solid var(--border2); border-radius: 6px;
   padding: 12px; margin-top: 4px;
 }
+/* ── Selector de días de la semana ── */
+.sch-days-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.sch-days-row > label.sch-days-label { font-size: 11px; color: var(--text2); margin-right: 2px; white-space: nowrap; }
+.sch-days { display: flex; gap: 4px; flex-wrap: wrap; }
+.sch-day-chk { display: none; }
+.sch-day-lbl {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 26px; border-radius: 5px;
+  border: 1px solid var(--border2); font-size: 11px;
+  font-family: var(--mono); color: var(--text2);
+  cursor: pointer; user-select: none;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.sch-day-chk:checked + .sch-day-lbl { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 /* ── Utility ── */
 .hint-mono { font-size: 12px; color: var(--text2); font-family: var(--mono); }
@@ -1231,6 +1245,10 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
             <label>Minutos</label>
             <input id="f-min" type="number" min="0" max="59" value="0" placeholder="0">
           </div>
+          <div class="sch-days-row">
+            <label class="sch-days-label">Días:</label>
+            <div class="sch-days" id="f-days-once"></div>
+          </div>
         </div>
 
         <div class="sch-panel" id="sch-interval">
@@ -1249,6 +1267,10 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
           <div class="form-group">
             <label>O cada N minutos</label>
             <input id="f-imins" type="number" min="1" max="59" value="60" placeholder="60">
+          </div>
+          <div class="sch-days-row">
+            <label class="sch-days-label">Días:</label>
+            <div class="sch-days" id="f-days-interval"></div>
           </div>
         </div>
 
@@ -1382,12 +1404,20 @@ th.sort-active .sort-icon { color: var(--accent); font-weight: 600; }
         <div class="sch-panel active" id="sr-sch-once">
           <div class="form-group"><label>Hora</label><input id="sr-hour" type="number" min="0" max="23" value="8"></div>
           <div class="form-group"><label>Minutos</label><input id="sr-min" type="number" min="0" max="59" value="0"></div>
+          <div class="sch-days-row">
+            <label class="sch-days-label">Días:</label>
+            <div class="sch-days" id="sr-days-once"></div>
+          </div>
         </div>
         <div class="sch-panel" id="sr-sch-interval">
           <div class="form-group"><label>Hora de inicio</label><input id="sr-shour" type="number" min="0" max="23" value="6"></div>
           <div class="form-group"><label>Minuto inicio</label><input id="sr-smin" type="number" min="0" max="59" value="0"></div>
           <div class="form-group"><label>Cada N horas (0=usar min)</label><input id="sr-ihours" type="number" min="0" max="23" value="4"></div>
           <div class="form-group"><label>O cada N minutos</label><input id="sr-imins" type="number" min="1" max="59" value="60"></div>
+          <div class="sch-days-row">
+            <label class="sch-days-label">Días:</label>
+            <div class="sch-days" id="sr-days-interval"></div>
+          </div>
         </div>
         <div class="sch-panel" id="sr-sch-cron">
           <div class="form-group form-full">
@@ -2890,13 +2920,38 @@ async function deleteTask(id, name) {
 let _schedEntries = [];    // Entradas de programación para la tarea activa
 let _srSchedEntries = [];  // Ídem para el reporte activo
 
+const _DAY_NAMES = ['Lun', 'Mar', 'Mi\u00e9', 'Jue', 'Vie', 'S\u00e1b', 'Dom'];
+
+// Renderiza 7 checkboxes de día dentro del contenedor dado
+function _renderDayPicker(containerId, selectedDays) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const active = selectedDays || [0, 1, 2, 3, 4, 5, 6];
+  el.innerHTML = _DAY_NAMES.map((name, i) => {
+    const chk = active.includes(i) ? 'checked' : '';
+    return `<input type="checkbox" class="sch-day-chk" id="${containerId}-${i}" value="${i}" ${chk}>`
+      + `<label class="sch-day-lbl" for="${containerId}-${i}">${name}</label>`;
+  }).join('');
+}
+
+// Devuelve array de días seleccionados, o null si están todos (sin restricción)
+function _getSelectedDays(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return null;
+  const checked = [...el.querySelectorAll('.sch-day-chk:checked')].map(c => +c.value);
+  return checked.length === 7 ? null : checked.sort((a, b) => a - b);
+}
+
 function _schEntryLabel(e) {
   const h  = String(e.hour  ?? e.start_hour  ?? 0).padStart(2, '0');
   const m  = String(e.minute ?? e.start_minute ?? 0).padStart(2, '0');
-  if (e.type === 'once_daily') return `\u23F0 Diario ${h}:${m}`;
+  const daysSuffix = (e.days && e.days.length < 7)
+    ? ' [' + e.days.map(d => _DAY_NAMES[d]).join(',') + ']'
+    : '';
+  if (e.type === 'once_daily') return `\u23F0 Diario ${h}:${m}${daysSuffix}`;
   if (e.type === 'interval') {
     const rep = (e.hours >= 1) ? `cada ${e.hours}h` : `cada ${e.minutes}min`;
-    return `\uD83D\uDD01 Desde ${String(e.start_hour ?? 0).padStart(2,'0')}:${String(e.start_minute ?? 0).padStart(2,'0')} \u2014 ${rep}`;
+    return `\uD83D\uDD01 Desde ${String(e.start_hour ?? 0).padStart(2,'0')}:${String(e.start_minute ?? 0).padStart(2,'0')} \u2014 ${rep}${daysSuffix}`;
   }
   if (e.type === 'cron') return `\uD83D\uDCC5 CRON: ${e.cron}`;
   return e.type;
@@ -2977,6 +3032,8 @@ function openAddSchEntry() {
   document.getElementById('f-ihours').value = 1;
   document.getElementById('f-imins').value = 60;
   document.getElementById('f-cron').value = '0 6 * * *';
+  _renderDayPicker('f-days-once');
+  _renderDayPicker('f-days-interval');
   document.getElementById('sch-add-widget').style.display = '';
   document.getElementById('btn-add-sch').style.display = 'none';
 }
@@ -2989,9 +3046,15 @@ function cancelAddSchEntry() {
 function confirmAddSchEntry() {
   let entry;
   if (currentSchTab === 'once') {
+    const days = _getSelectedDays('f-days-once');
+    if (days !== null && days.length === 0) { toast('Selecciona al menos un d\u00eda', 'error'); return; }
     entry = { type: 'once_daily', hour: +document.getElementById('f-hour').value, minute: +document.getElementById('f-min').value };
+    if (days) entry.days = days;
   } else if (currentSchTab === 'interval') {
+    const days = _getSelectedDays('f-days-interval');
+    if (days !== null && days.length === 0) { toast('Selecciona al menos un d\u00eda', 'error'); return; }
     entry = { type: 'interval', start_hour: +document.getElementById('f-shour').value, start_minute: +document.getElementById('f-smin').value, hours: +document.getElementById('f-ihours').value, minutes: +document.getElementById('f-imins').value };
+    if (days) entry.days = days;
   } else {
     const cron = document.getElementById('f-cron').value.trim();
     if (!cron) { toast('La expresi\u00F3n cron es obligatoria', 'error'); return; }
@@ -3018,6 +3081,8 @@ function openSrAddSchEntry() {
   document.getElementById('sr-ihours').value = 4;
   document.getElementById('sr-imins').value = 60;
   document.getElementById('sr-cron').value = '0 8 * * *';
+  _renderDayPicker('sr-days-once');
+  _renderDayPicker('sr-days-interval');
   document.getElementById('sr-sch-add-widget').style.display = '';
   document.getElementById('sr-btn-add-sch').style.display = 'none';
 }
@@ -3030,9 +3095,15 @@ function cancelSrAddSchEntry() {
 function confirmSrAddSchEntry() {
   let entry;
   if (currentSrTab === 'once') {
+    const days = _getSelectedDays('sr-days-once');
+    if (days !== null && days.length === 0) { toast('Selecciona al menos un d\u00eda', 'error'); return; }
     entry = { type: 'once_daily', hour: +document.getElementById('sr-hour').value, minute: +document.getElementById('sr-min').value };
+    if (days) entry.days = days;
   } else if (currentSrTab === 'interval') {
+    const days = _getSelectedDays('sr-days-interval');
+    if (days !== null && days.length === 0) { toast('Selecciona al menos un d\u00eda', 'error'); return; }
     entry = { type: 'interval', start_hour: +document.getElementById('sr-shour').value, start_minute: +document.getElementById('sr-smin').value, hours: +document.getElementById('sr-ihours').value, minutes: +document.getElementById('sr-imins').value };
+    if (days) entry.days = days;
   } else {
     const cron = document.getElementById('sr-cron').value.trim();
     if (!cron) { toast('La expresi\u00F3n cron es obligatoria', 'error'); return; }

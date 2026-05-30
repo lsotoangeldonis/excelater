@@ -409,22 +409,31 @@ def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
         {"cron": "0 4 * * *; 0 0 * * 1"} → varias expresiones combinadas con OR
     """
     if schedule_type == ScheduleType.ONCE_DAILY:
-        return CronTrigger(
+        dow = schedule_config.get("days")
+        dow_str = ",".join(str(d) for d in sorted(dow)) if dow else None
+        kwargs: dict = dict(
             hour=schedule_config.get("hour", 6),
             minute=schedule_config.get("minute", 0),
             timezone=settings.timezone,
         )
+        if dow_str:
+            kwargs["day_of_week"] = dow_str
+        return CronTrigger(**kwargs)
 
     if schedule_type == ScheduleType.INTERVAL:
         hours = schedule_config.get("hours", 0)
         minutes = schedule_config.get("minutes", 60)
         sh = schedule_config.get("start_hour", 0)
         sm = schedule_config.get("start_minute", 0)
+        dow = schedule_config.get("days")
+        dow_str = ",".join(str(d) for d in sorted(dow)) if dow else None
+        extra: dict = {"day_of_week": dow_str} if dow_str else {}
         if hours >= 1:
             return CronTrigger(
                 hour=f"{sh}-23/{int(hours)}",
                 minute=sm,
                 timezone=settings.timezone,
+                **extra,
             )
         else:
             step = int(minutes) if minutes else 60
@@ -432,6 +441,7 @@ def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
                 minute=f"*/{step}",
                 hour=f"{sh}-23",
                 timezone=settings.timezone,
+                **extra,
             )
 
     if schedule_type == ScheduleType.CRON:
