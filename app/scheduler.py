@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select
@@ -23,6 +24,25 @@ from app.database import (
     NotificationRule, ReportSchedule,
 )
 from app.excel_engine import EngineConfig, run_update, current_run_id_var
+from app import com_registry
+
+
+# Tiempo de gracia (s) entre cancel_run() y matar procesos COM huérfanos.
+# Suficiente para que stop_event lleve a un cierre cooperativo (xl.Quit) si COM
+# está en un polling. Si está pegado en un COM call, vamos directo al kill.
+_CANCEL_GRACE_S = 3
+
+
+async def _grace_then_kill(run_id: int, log: logging.Logger) -> None:
+    """Espera gracia + termina forzosamente cualquier proceso COM aún vivo del run.
+    Idempotente: si el engine ya cerró Excel/Access cooperativamente, no hace nada."""
+    try:
+        await asyncio.sleep(_CANCEL_GRACE_S)
+    except asyncio.CancelledError:
+        pass  # Si nos vuelven a cancelar, seguimos al kill igual
+    killed = await asyncio.to_thread(com_registry.kill_run_processes, run_id, log)
+    if killed:
+        log.warning(f"Procesos COM terminados al cancelar el run: PIDs={killed}")
 
 
 scheduler = AsyncIOScheduler(timezone=settings.timezone)
@@ -176,6 +196,7 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
         except asyncio.CancelledError:
             cancelled = True
             logger.warning("Ejecución detenida manualmente.")
+            await _grace_then_kill(run_id, logger)
         except Exception as exc:
             result = _unhandled_error_result(exc)
         finally:
@@ -212,6 +233,7 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
             except asyncio.CancelledError:
                 cancelled = True
                 logger.warning("Ejecución detenida manualmente.")
+                await _grace_then_kill(run_id, logger)
             except Exception as exc:
                 result = _unhandled_error_result(exc)
             finally:
@@ -239,6 +261,7 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
         except asyncio.CancelledError:
             cancelled = True
             logger.warning("Ejecución detenida manualmente.")
+            await _grace_then_kill(run_id, logger)
         except Exception as exc:
             result = _unhandled_error_result(exc)
         finally:
@@ -358,6 +381,18 @@ async def execute_task(task_id: str, config_overrides: dict | None = None):
 # CONSTRUCCIÓN DE TRIGGERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _build_cron_trigger(expr: str) -> CronTrigger:
+    parts = expr.strip().split()
+    return CronTrigger(
+        minute=parts[0],
+        hour=parts[1],
+        day=parts[2],
+        month=parts[3],
+        day_of_week=parts[4],
+        timezone=settings.timezone,
+    )
+
+
 def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
     """
     schedule_config según tipo:
@@ -371,6 +406,7 @@ def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
 
     CRON:
         {"cron": "0 6 * * 1-5"}   → expresión cron estándar de 5 campos
+        {"cron": "0 4 * * *; 0 0 * * 1"} → varias expresiones combinadas con OR
     """
     if schedule_type == ScheduleType.ONCE_DAILY:
         return CronTrigger(
@@ -399,16 +435,12 @@ def build_trigger(schedule_type: ScheduleType, schedule_config: dict):
             )
 
     if schedule_type == ScheduleType.CRON:
-        expr = schedule_config.get("cron", "0 6 * * *")
-        parts = expr.strip().split()
-        return CronTrigger(
-            minute=parts[0],
-            hour=parts[1],
-            day=parts[2],
-            month=parts[3],
-            day_of_week=parts[4],
-            timezone=settings.timezone,
-        )
+        raw = schedule_config.get("cron", "0 6 * * *")
+        # Permite varias expresiones separadas por ';' combinadas con OR.
+        # Ej: "0 4 * * *; 0 0 * * 1" → todos los días 4am + lunes 00:00.
+        exprs = [e for e in (s.strip() for s in raw.split(";")) if e] or ["0 6 * * *"]
+        triggers = [_build_cron_trigger(e) for e in exprs]
+        return triggers[0] if len(triggers) == 1 else OrTrigger(triggers)
 
     raise ValueError(f"Tipo de programación desconocido: {schedule_type}")
 

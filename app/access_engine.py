@@ -198,10 +198,22 @@ class AccessPipelineRunner:
 
         compact_ok = False
         acc = None
+        acc_pid = None
         try:
             pythoncom.CoInitialize()
             acc = win32com.client.DispatchEx("Access.Application")
             acc.Visible = False
+            # Registrar PID en cuanto Access esté listo.
+            try:
+                import win32process
+                from app.excel_engine import current_run_id_var
+                from app import com_registry
+                _, acc_pid = win32process.GetWindowThreadProcessId(acc.hWndAccessApp)
+                com_registry.register(
+                    acc_pid, "MSACCESS.EXE", db_path, current_run_id_var.get(),
+                )
+            except Exception:
+                acc_pid = None
             # Bloquear prompts de macros firmadas/no firmadas (msoAutomationSecurityForceDisable = 3).
             # Property no disponible en Access < 2007; ignorar si COM la rechaza.
             try:
@@ -219,6 +231,11 @@ class AccessPipelineRunner:
                     acc.Quit()
                 except Exception:
                     pass
+            try:
+                from app import com_registry
+                com_registry.unregister(acc_pid)
+            except Exception:
+                pass
             try:
                 pythoncom.CoUninitialize()
             except Exception:
@@ -287,10 +304,22 @@ class AccessPipelineRunner:
                 return False
 
         acc = None
+        acc_pid = None
         try:
             pythoncom.CoInitialize()
             acc = win32com.client.DispatchEx("Access.Application")
             acc.Visible = self.cfg.access_visible
+            # Registrar PID antes de abrir la BD (AutoExec puede colgar y dejar huérfano).
+            try:
+                import win32process
+                from app.excel_engine import current_run_id_var
+                from app import com_registry
+                _, acc_pid = win32process.GetWindowThreadProcessId(acc.hWndAccessApp)
+                com_registry.register(
+                    acc_pid, "MSACCESS.EXE", db_path, current_run_id_var.get(),
+                )
+            except Exception:
+                acc_pid = None
             # Bloquear prompts de macros antes de OpenCurrentDatabase (que ya
             # puede disparar AutoExec). msoAutomationSecurityForceDisable = 3.
             try:
@@ -351,6 +380,11 @@ class AccessPipelineRunner:
                     acc.Quit()
                 except Exception:
                     pass
+            try:
+                from app import com_registry
+                com_registry.unregister(acc_pid)
+            except Exception:
+                pass
             try:
                 pythoncom.CoUninitialize()
             except Exception:

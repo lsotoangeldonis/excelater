@@ -437,21 +437,42 @@ def _lock_reason(path: str) -> str:
             parts.append("Excel lo tiene abierto (~$lock detectado)")
 
     # — Restart Manager (cualquier OS handle) ————————————————————
+    # Clasificación de cada locker:
+    #   • Si el PID está en el registro persistente   → [NUESTRO run_id=N]
+    #   • Si es Office sin ventana visible            → [PROBABLE NUESTRO sin ventana]
+    #   • Si es Office antes del run actual           → [HUÉRFANO?] (heurística débil)
+    #   • Si es Office con ventana visible            → [USUARIO] (alguien lo abrió)
+    #   • Si no es Office                             → sin etiqueta
+    from app import com_registry
     rm_procs = _rm_get_locking_processes(path)
     for proc in rm_procs:
         start = proc.get("start_time")
         start_str = start.strftime("%Y-%m-%d %H:%M:%S") if start else "?"
         name = proc.get("name") or "?"
-        is_orphan = (
-            current_run_started is not None
-            and start is not None
-            and start < current_run_started
-            and _is_office_process(name)
-        )
-        label = "[HUÉRFANO] " if is_orphan else ""
+        pid = proc.get("pid")
+
+        klass = com_registry.classify_locker(pid, name)
+        if klass["category"] == "ours":
+            ent = klass.get("entry") or {}
+            label = f"[NUESTRO run_id={ent.get('run_id')}] "
+        elif klass["category"] == "maybe_ours":
+            label = "[PROBABLE NUESTRO sin ventana] "
+        elif klass["category"] == "external":
+            label = "[USUARIO con Office abierto] "
+        else:
+            # Sin info del registro y sin ventana visible verificable;
+            # mantener la heurística por hora-de-inicio + nombre Office.
+            is_old_office = (
+                current_run_started is not None
+                and start is not None
+                and start < current_run_started
+                and _is_office_process(name)
+            )
+            label = "[HUÉRFANO?] " if is_old_office else ""
+
         parts.append(
             f"{label}proceso {name} "
-            f"PID={proc.get('pid')} sesión={proc.get('session_id')} "
+            f"PID={pid} sesión={proc.get('session_id')} "
             f"iniciado={start_str}"
         )
 
@@ -529,6 +550,19 @@ class ExcelCOMUpdater:
         self.xl.Visible = self.cfg.excel_visible
         self.xl.DisplayAlerts = False
         self.xl.AskToUpdateLinks = False
+        # Capturar PID del proceso Excel recién lanzado para registrarlo.
+        # xl.Hwnd existe incluso con Visible=False (ventana oculta).
+        self.com_pid = None
+        try:
+            import win32process
+            from app import com_registry
+            _, self.com_pid = win32process.GetWindowThreadProcessId(self.xl.Hwnd)
+            com_registry.register(
+                self.com_pid, "EXCEL.EXE", self.cfg.file_path,
+                current_run_id_var.get(),
+            )
+        except Exception:
+            self.com_pid = None
         self.wb = self.xl.Workbooks.Open(
             self.cfg.file_path, UpdateLinks=0, ReadOnly=False
         )
@@ -552,6 +586,12 @@ class ExcelCOMUpdater:
                 self.xl.Quit()
             except Exception:
                 pass
+        # Liberar entrada del registro persistente (best-effort).
+        try:
+            from app import com_registry
+            com_registry.unregister(getattr(self, "com_pid", None))
+        except Exception:
+            pass
         pythoncom.CoUninitialize()
 
     def _is_connection_refreshing(self, conn) -> bool:

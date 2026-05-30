@@ -44,6 +44,14 @@ async def lifespan(app: FastAPI):
     # ── Startup ───────────────────────────────────────────────────────────────
     await init_db()
     await _cleanup_stuck_runs()
+    # Limpiar PIDs huérfanos del registro COM (procesos que ya no existen).
+    try:
+        from app import com_registry
+        removed = com_registry.prune_dead()
+        if removed:
+            print(f"[Server] com_registry: {removed} entrada(s) muerta(s) purgadas.")
+    except Exception as e:
+        print(f"[Server] com_registry.prune_dead falló: {e}")
     scheduler.start()
     await load_all_tasks()
     print(f"[Server] Dashboard en http://{settings.host}:{settings.port}")
